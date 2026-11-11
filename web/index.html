@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Run · Sprinto outbound</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Familjen+Grotesk:wght@400;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
+  <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/></symbol>
+</svg>
+<header class="site">
+  <span class="brand">Sprinto outbound</span>
+  <nav aria-label="Main"><a href="index.html" aria-current="page">Run</a><a href="review.html">Review</a></nav>
+</header>
+<main>
+  <h1>Run</h1>
+  <p class="muted">Paste this week's company domains. The app checks the list before anything is researched.</p>
+  <div class="cols">
+    <section class="stack" aria-labelledby="run-h">
+      <h2 id="run-h" class="label">This week's list</h2>
+      <form id="run-form" class="stack" novalidate>
+        <div>
+          <label for="domains">Company domains</label>
+          <p class="hint" id="domains-hint">8 to 15 domains, one per line or separated by commas. Example: kestrelmetrics.io</p>
+        </div>
+        <textarea id="domains" name="domains" aria-describedby="domains-hint domains-count" spellcheck="false" autocomplete="off" placeholder="kestrelmetrics.io"></textarea>
+        <p class="hint mono" id="domains-count">0 domains</p>
+        <p class="error" id="form-error" role="alert" hidden></p>
+        <div class="row">
+          <button class="btn primary" type="submit" id="run-btn">Check the list</button>
+          <button class="btn" type="button" id="clear-btn">Clear</button>
+        </div>
+      </form>
+      <div class="result" id="result" aria-live="polite"></div>
+    </section>
+    <aside class="setup stack" aria-labelledby="setup-h">
+      <h2 id="setup-h" class="label">Setup check</h2>
+      <div>
+        <p class="quota mono" id="quota">-</p>
+        <p class="hint">Hunter searches left this month</p>
+      </div>
+      <dl id="setup-list">
+        <div><dt>Claude API <span class="chip wait" data-check="claude"><svg><use href="#i-clock"/></svg>Checking</span></dt><dd data-detail="claude">Checking the key.</dd></div>
+        <div><dt>Hunter <span class="chip wait" data-check="hunter"><svg><use href="#i-clock"/></svg>Checking</span></dt><dd data-detail="hunter">Checking the key.</dd></div>
+        <div><dt>Gmail <span class="chip wait" data-check="gmail"><svg><use href="#i-clock"/></svg>Checking</span></dt><dd data-detail="gmail">Checking the login.</dd></div>
+      </dl>
+      <button class="btn" type="button" id="recheck-btn">Check again</button>
+    </aside>
+  </div>
+</main>
+<script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,14 @@
+{
+  "name": "sprinto-outbound-agent",
+  "private": true,
+  "scripts": {
+    "start": "python3 app/server.py",
+    "test": "python3 -m unittest discover -s tests",
+    "test:e2e": "playwright test",
+    "test:e2e:report": "playwright show-report"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "^4.14.0",
+    "@playwright/test": "^1.65.0"
+  }
+}

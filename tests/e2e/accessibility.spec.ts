@@ -1,0 +1,25 @@
+import { test, expect } from "@playwright/test";
+import AxeBuilder from "@axe-core/playwright";
+
+// ADAPT: one entry per page/route in the app.
+const PAGES = [
+  { path: "/", name: "Run" },
+  { path: "/review.html", name: "Review" },
+];
+
+for (const p of PAGES) {
+  test(`accessibility: ${p.name} page has no WCAG A/AA violations`, async ({ page }) => {
+    await page.goto(p.path);
+    await page.waitForLoadState("networkidle");
+    const results = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"]).analyze();
+    const summary = results.violations.map((v) => ({
+      rule: v.id,
+      impact: v.impact,
+      help: v.help,
+      count: v.nodes.length,
+      examples: v.nodes.slice(0, 3).map((n) => `${n.target.join(" ")} :: ${n.failureSummary?.split("\n").slice(1).join(" ").trim()}`),
+    }));
+    if (summary.length) console.log(`\n[${p.name}] ${JSON.stringify(summary, null, 2)}`);
+    expect(summary, `${p.name} accessibility violations`).toEqual([]);
+  });
+}

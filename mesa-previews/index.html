@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sprinto outbound agent: design previews</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Chivo:wght@400;600&family=Chivo+Mono:wght@400;500&family=Familjen+Grotesk:wght@400;600&family=IBM+Plex+Mono:wght@400;500&family=Host+Grotesk:wght@400;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0}
+html{font-size:16px}
+[data-d="A"]{--surface:#f7f9fa;--surface-2:#ecf0f2;--text:#1f3038;--muted:#5d6b72;--accent:#0d7480;--on-accent:#ffffff;--accent-text:#0d7480;--border:#d3dce0;
+  --ok-bg:#e1f0e7;--ok:#1d6b43;--warn-bg:#f7ebcf;--warn:#7a4f00;--bad-bg:#f6dfdc;--bad:#9a2b26;--info-bg:#dcecef;--info:#0b5a64;
+  --radius:4px;--font:"Chivo",system-ui,sans-serif;--mono:"Chivo Mono",ui-monospace,monospace;--bar:#1f3038;--bar-text:#f7f9fa}
+[data-d="B"]{--surface:#F3EEE3;--surface-2:#EAE3D3;--text:#111111;--muted:#5a5448;--accent:#E2622A;--on-accent:#111111;--accent-text:#9a3d12;--border:#d6cdb8;
+  --ok-bg:#dde8d3;--ok:#2d5a1f;--warn-bg:#f2e2b8;--warn:#6e4800;--bad-bg:#f1d6cb;--bad:#8e2f12;--info-bg:#e0e2dc;--info:#3b4a52;
+  --radius:10px;--font:"Familjen Grotesk",system-ui,sans-serif;--mono:"IBM Plex Mono",ui-monospace,monospace;--bar:#111111;--bar-text:#F3EEE3}
+[data-d="C"]{--surface:#1E1E1C;--surface-2:#2a2a27;--text:#D9CBB3;--muted:#A89F8D;--accent:#2A5FE8;--on-accent:#ffffff;--accent-text:#6C93F5;--border:#3d3d38;
+  --ok-bg:#1f3a2a;--ok:#8fd7a8;--warn-bg:#44371a;--warn:#e6c26a;--bad-bg:#4a2523;--bad:#f0a49f;--info-bg:#23324f;--info:#9db8f7;
+  --radius:6px;--font:"Host Grotesk",system-ui,sans-serif;--mono:"JetBrains Mono",ui-monospace,monospace;--bar:#2a2a27;--bar-text:#D9CBB3}
+body{background:#fff;font-family:system-ui,sans-serif}
+.pv-bar{display:flex;gap:12px;align-items:center;padding:12px 24px;background:#fff;color:#222;border-bottom:1px solid #ddd;font:14px system-ui}
+.pv-bar button{font:600 14px system-ui;padding:8px 14px;border:1px solid #999;background:#fff;color:#222;border-radius:6px;cursor:pointer}
+.pv-bar button[aria-pressed="true"]{background:#222;color:#fff;border-color:#222}
+.app{background:var(--surface);color:var(--text);font-family:var(--font);font-size:15px;line-height:1.5;padding:24px;min-height:100vh}
+.app h1,.app h2,.app h3,.app h4{font-weight:600}
+.num,.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.i{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:1.75;stroke-linecap:round;stroke-linejoin:round;flex:none}
+.top{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap;margin-bottom:20px}
+.top h1,.top h2{font-size:24px}
+.top .meta{color:var(--muted);font-size:14px}
+.summary{display:flex;gap:24px;flex-wrap:wrap}
+.summary div{display:flex;flex-direction:column}
+.summary .n{font-family:var(--mono);font-variant-numeric:tabular-nums;font-size:32px;line-height:1.1;font-weight:500}
+.summary .n.key{color:var(--accent-text)}
+.summary .l{font-size:13px;color:var(--muted)}
+.chip{display:inline-flex;align-items:center;gap:6px;padding:2px 10px;border-radius:999px;font-size:13px;font-weight:600;white-space:nowrap}
+.chip-ready{background:var(--info-bg);color:var(--info)}
+.chip-sent{background:var(--ok-bg);color:var(--ok)}
+.chip-rew{background:var(--ok-bg);color:var(--ok)}
+.chip-drop{background:var(--surface-2);color:var(--muted)}
+.chip-flag{background:var(--warn-bg);color:var(--warn)}
+.btn{font:600 14px var(--font);padding:8px 14px;border-radius:var(--radius);border:1px solid var(--border);background:transparent;color:var(--text);cursor:pointer}
+.btn.primary{background:var(--accent);color:var(--on-accent);border-color:var(--accent)}
+.btn.ghost{border-color:transparent;color:var(--muted)}
+.lbl{font-size:12px;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);margin-bottom:4px}
+.src{font-family:var(--mono);font-size:12px;color:var(--muted)}
+/* detail */
+.detail{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:20px}
+.detail header{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:16px}
+.detail h2{font-size:20px}
+.dom{font-family:var(--mono);font-size:13px;color:var(--muted)}
+.dgrid{display:grid;grid-template-columns:minmax(0,3fr) minmax(0,2fr);gap:24px}
+.email{border-top:2px solid var(--text);padding-top:12px}
+.subj{font-weight:600;margin-bottom:8px}
+.body p{margin-bottom:10px;max-width:62ch;text-wrap:pretty}
+.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+.evidence h3{font-size:13px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin:14px 0 4px}
+.evidence h3:first-child{margin-top:0}
+.evidence ol{padding-left:18px}
+.evidence p,.evidence li{font-size:14px;max-width:62ch;text-wrap:pretty}
+/* A: ledger */
+.lay-A table{width:100%;border-collapse:collapse;margin-bottom:20px;font-size:14px}
+.lay-A th{text-align:left;font-size:12px;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);font-weight:600;padding:8px 10px;border-bottom:1px solid var(--text)}
+.lay-A td{padding:10px;border-bottom:1px solid var(--border);vertical-align:top}
+.lay-A tr.row{cursor:pointer}
+.lay-A tr.row:hover td{background:var(--surface-2)}
+.lay-A tr.sel td{background:var(--surface-2)}
+.lay-A tr.sel td:first-child{font-weight:600}
+.lay-A td.r{text-align:right}
+.lay-A .grp td{background:var(--bar);color:var(--bar-text);font-size:12px;letter-spacing:.04em;text-transform:uppercase;padding:6px 10px}
+/* B: split */
+.lay-B .split{display:grid;grid-template-columns:minmax(260px,1fr) minmax(0,2fr);gap:20px;align-items:start}
+.lay-B .list{display:flex;flex-direction:column;gap:8px}
+.lay-B .list .gl{font-size:12px;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);margin:10px 0 2px}
+.lay-B .item{background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius);padding:12px 14px;cursor:pointer;text-align:left;font:inherit;color:inherit;width:100%}
+.lay-B .item.sel{border-color:var(--text);background:var(--surface)}
+.lay-B .item b{display:block;font-size:16px}
+.lay-B .item .why{text-wrap:pretty;font-size:13px;color:var(--muted);margin:2px 0 6px}
+.lay-B .detail{background:var(--surface);border-color:var(--text)}
+.lay-B .body p{font-size:17px}
+.lay-B .top{border-bottom:2px solid var(--text);padding-bottom:12px}
+/* C: board */
+.lay-C .board{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;margin-bottom:20px}
+.lay-C .col h2{font-size:13px;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);margin-bottom:8px;display:flex;justify-content:space-between}
+.lay-C .card{display:block;width:100%;text-align:left;font:inherit;color:inherit;background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius);padding:12px;margin-bottom:8px;cursor:pointer}
+.lay-C .card.sel{border-color:var(--text)}
+.lay-C .card b{display:block;margin-bottom:2px}
+.lay-C .card .why{text-wrap:pretty;font-size:13px;color:var(--muted);margin:2px 0 8px}
+.lay-C .detail{background:var(--surface-2)}
+.lay-C .body p,.lay-C .evidence p,.lay-C .evidence li{max-width:52ch}
+/* phone */
+.phone-wrap{margin-top:32px}
+.phone-wrap h2{font-size:14px;color:var(--muted);margin-bottom:8px;font-weight:600}
+.phone{width:375px;max-width:100%;padding:14px;background:var(--surface);outline:1px dashed var(--border);overflow:hidden}
+.phone .top h2{font-size:18px}
+.phone .summary{gap:14px}
+.phone .summary .n{font-size:22px}
+.pcard{border-bottom:1px solid var(--border);margin-bottom:8px;padding:0 0 12px}
+.pcard>button{all:unset;display:block;width:100%;cursor:pointer}
+.pcard b{display:block}
+.pcard .why{font-size:13px;color:var(--muted);margin:2px 0 6px}
+.pcard .detail{margin-top:12px;padding:12px 0 0;border:0;border-top:1px solid var(--border);border-radius:0;background:transparent}
+.phone .dgrid{grid-template-columns:1fr;gap:12px}
+@media(max-width:820px){.lay-B .split,.dgrid,.lay-C .board{grid-template-columns:1fr}.lay-A table{display:none}.lay-A .acards{display:block}}
+.acards{display:none}
+:focus-visible{outline:2px solid var(--accent-text);outline-offset:2px}
+@media(prefers-reduced-motion:no-preference){.btn{transition:background-color .15s}}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+<symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></symbol>
+<symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
+<symbol id="i-flag" viewBox="0 0 24 24"><path d="M6 21V4M6 4h11l-2 4 2 4H6"/></symbol>
+<symbol id="i-send" viewBox="0 0 24 24"><path d="M4 12l16-8-6 16-3-7-7-1z"/></symbol>
+<symbol id="i-pencil" viewBox="0 0 24 24"><path d="M5 19l1-4L16.5 4.5a2 2 0 013 3L9 18l-4 1z"/></symbol>
+</svg>
+<div class="pv-bar" id="bar"><strong>Design previews</strong><span>sample data, invented companies</span>
+<button data-d="A">Direction A</button><button data-d="B">Direction B</button><button data-d="C">Direction C</button></div>
+<div id="root"></div>
+<script>
+(() => {
+  const rows = [
+    {id:1, co:"Kestrel Metrics", dom:"kestrelmetrics.io", st:"sent", group:"ready",
+     why:"Series B · enterprise tier on /pricing · no certification on /trust", src:"/pricing, /trust, /careers",
+     p:{name:"Daniel Okafor", role:"VP Engineering", why:"No security or compliance title in Hunter's 10 results, so VP Engineering is next on the role list. Confidence 91, email valid."},
+     pains:["Enterprise buyers now ask for a SOC 2 report during procurement.","The first security role was only just posted, so audit scope has no owner yet."],
+     measured:"Shipping on time while enterprise security questionnaires pile up.",
+     subject:"Kestrel's first security hire",
+     body:["Hi Daniel,","Kestrel just posted its first security engineer role, and /pricing now shows an enterprise tier. That is usually when a customer's security questionnaire arrives asking for a SOC 2 report.","Without a report or an owner, those questionnaires tend to hold up a deal for weeks.","Sprinto takes a team from no certification to an audit-ready SOC 2 without the spreadsheet work. Would a one-page view of what an audit involves for a team your size be useful?"],
+     trace:[5,1,0,0,6], next:""},
+    {id:2, co:"Fernhill Payroll", dom:"fernhillpayroll.com", st:"drop", group:"drop",
+     why:"SOC 2 Type II badge in homepage footer", src:"homepage footer",
+     next:"Already certified, so the loop stopped. No further fetches, no Hunter search used."},
+    {id:3, co:"Orbitly", dom:"orbitly.app", st:"flag", group:"flag",
+     why:"Stage still unknown after 4 extra fetches", src:"/careers, /pricing, /about, /customers",
+     next:"The cap was reached with the stage field empty. Open the company and decide, or drop it."},
+    {id:4, co:"Tallybook", dom:"tallybook.co", st:"rew", group:"ready",
+     why:"Series A · 3 enterprise logos on /customers · no certification found", src:"/customers, /about, /trust",
+     p:{name:"Arjun Rao", role:"CTO", why:"At about 50 people the CTO is the fallback on the role list. Confidence 88, email valid."},
+     pains:["Enterprise logos on /customers mean security reviews are likely already happening.","No trust page, so each review is answered by hand."],
+     measured:"Closing enterprise deals without engineers answering security forms.",
+     subject:"Tallybook's enterprise customers page",
+     body:["Hi Arjun,","Your /customers page now lists three enterprise names, and there is no trust page yet. Each of those buyers has probably sent a security form that someone on your team answered by hand.","Sprinto sets up SOC 2 so those answers become one report you can send instead.","Would it help if I showed what that looks like for a team of about fifty?"],
+     trace:[4,1,0,0,5], next:""},
+    {id:5, co:"Quillstream", dom:"quillstream.dev", st:"flag", group:"flag",
+     why:"Qualified, but no trigger found, so no email was written", src:"/careers, /pricing",
+     next:"CANNOT WRITE THIS EMAIL: no recent hire, tier change or market move in the pack. Add a trigger or skip."},
+    {id:6, co:"Lumenpost", dom:"lumenpost.app", st:"drop", group:"drop",
+     why:"Consumer app (B2C), no business buyer named", src:"homepage hero",
+     next:"Not B2B SaaS, so the loop stopped. No Hunter search used."}
+  ];
+  const ST = {ready:["Qualified","check"],sent:["Sent to me","send"],rew:["Rewritten","pencil"],drop:["Disqualified","x"],flag:["Flagged","flag"]};
+  const chip = r => `<span class="chip chip-${r.st}"><svg class="i"><use href="#i-${ST[r.st][1]}"/></svg>${ST[r.st][0]}</span>`;
+  const hasDraft = r => !!r.body;
+  const detail = r => {
+    const left = hasDraft(r)
+      ? `<section class="email"><p class="lbl">Draft, goes to your own inbox only</p><p class="subj">${r.subject}</p><div class="body">${r.body.map(p=>`<p>${p}</p>`).join("")}</div>
+         <div class="actions"><button class="btn primary">Send to my inbox</button><button class="btn">I rewrote it</button><button class="btn ghost">Skip</button></div></section>`
+      : `<section class="email"><p class="lbl">No draft</p><p class="subj">${ST[r.st][0]}</p><div class="body"><p>${r.next}</p></div>
+         <div class="actions"><button class="btn primary">Open for manual review</button><button class="btn ghost">Drop</button></div></section>`;
+    const ev = `<section class="evidence"><h3>Why this company</h3><p>${r.why} <span class="src">${r.src}</span></p>`
+      + (r.p ? `<h3>Why this person</h3><p><strong>${r.p.name}</strong>, ${r.p.role}. ${r.p.why}</p>
+         <h3>Two pains</h3><ol>${r.pains.map(x=>`<li>${x}</li>`).join("")}</ol>
+         <h3>What this role is measured on</h3><p>${r.measured}</p>
+         <h3>Trace</h3><p class="num">${r.trace[0]} of ${r.trace[4]} sentences from the pack · ${r.trace[1]} generic · ${r.trace[2]} made up · ${r.trace[3]} banned</p>` : "") + `</section>`;
+    return `<article class="detail"><header><h2>${r.co}</h2><span class="dom">${r.dom}</span>${chip(r)}</header><div class="dgrid">${left}${ev}</div></article>`;
+  };
+  const counts = () => ({need: rows.filter(r=>r.group==="flag").length, ready: rows.filter(r=>r.group==="ready").length, drop: rows.filter(r=>r.group==="drop").length});
+  const top = (small) => { const c = counts(); const T = small ? "h2" : "h1"; return `<div class="top"><div><${T}>Run of ${rows.length} domains</${T}><p class="meta">Monday · 2 min 10 s · <span class="num">Hunter 19 of 25 left</span></p></div>
+    <div class="summary"><div><span class="n key">${c.need}</span><span class="l">need you</span></div><div><span class="n">${c.ready}</span><span class="l">drafts ready</span></div><div><span class="n">${c.drop}</span><span class="l">dropped</span></div></div></div>`; };
+  const order = ["flag","ready","drop"], gname = {flag:"Needs you", ready:"Drafts to review", drop:"Dropped, with reason"};
+  const grouped = () => order.map(g => [g, rows.filter(r=>r.group===g)]);
+  let sel = 1, selPhone = 1, dir = "A";
+
+  const layA = () => `${top()}
+    <table><thead><tr><th>Company</th><th>Status</th><th>Why</th><th>Contact</th><th class="r">Trace</th></tr></thead><tbody>
+    ${grouped().map(([g,rs]) => `<tr class="grp"><td colspan="5">${gname[g]} (${rs.length})</td></tr>` + rs.map(r => `<tr class="row ${r.id===sel?"sel":""}" data-id="${r.id}" tabindex="0"><td>${r.co}<br><span class="dom">${r.dom}</span></td><td>${chip(r)}</td><td>${r.why}</td><td>${r.p?`${r.p.name}<br><span class="dom">${r.p.role}</span>`:"-"}</td><td class="r num">${r.trace?`${r.trace[0]}/${r.trace[4]}`:"-"}</td></tr>`).join("")).join("")}
+    </tbody></table>${detail(rows.find(r=>r.id===sel))}`;
+
+  const layB = () => `${top()}<div class="split"><div class="list">${grouped().map(([g,rs]) => `<p class="gl">${gname[g]} (${rs.length})</p>` + rs.map(r => `<button class="item ${r.id===sel?"sel":""}" data-id="${r.id}"><b>${r.co}</b><p class="why">${r.why}</p>${chip(r)}</button>`).join("")).join("")}</div>${detail(rows.find(r=>r.id===sel))}</div>`;
+
+  const layC = () => `${top()}<div class="board">${grouped().map(([g,rs]) => `<div class="col"><h2><span>${gname[g]}</span><span class="num">${rs.length}</span></h2>${rs.map(r => `<button class="card ${r.id===sel?"sel":""}" data-id="${r.id}"><b>${r.co}</b><p class="why">${r.why}</p>${chip(r)}</button>`).join("")}</div>`).join("")}</div>${detail(rows.find(r=>r.id===sel))}`;
+
+  const phone = () => `<div class="phone-wrap"><h2>Phone view</h2><div class="phone">${top(true)}${rows.map(r => `<div class="pcard"><button data-pid="${r.id}" aria-expanded="${r.id===selPhone}"><b>${r.co}</b><p class="why">${r.why}</p>${chip(r)}</button>${r.id===selPhone?detail(r):""}</div>`).join("")}</div></div>`;
+
+  const root = document.getElementById("root"), bar = document.getElementById("bar");
+  const render = () => {
+    const lay = {A:layA,B:layB,C:layC}[dir]();
+    root.innerHTML = `<main class="app lay-${dir}" data-d="${dir}">${lay}${phone()}</main>`;
+    bar.querySelectorAll("button").forEach(b => b.setAttribute("aria-pressed", b.dataset.d === dir));
+  };
+  const q = new URLSearchParams(location.search).get("d");
+  if (q && "ABC".includes(q)) { dir = q; bar.style.display = "none"; }
+  root.addEventListener("click", e => {
+    const t = e.target.closest("[data-id],[data-pid]"); if (!t) return;
+    if (t.dataset.id) sel = +t.dataset.id; else selPhone = +t.dataset.pid;
+    render();
+  });
+  bar.addEventListener("click", e => { const b = e.target.closest("button"); if (!b) return; dir = b.dataset.d; render(); });
+  render();
+})();
+</script>
+</body>
+</html>
