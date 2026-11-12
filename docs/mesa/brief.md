@@ -40,7 +40,7 @@ Build, with a human at the send step. 01 YES, 02 YES, 03 UNCERTAIN (resolved by 
 9. Send via Gmail to the operator's own address only; decision record is a separate file per company.
 10. A human reviews every draft before any real send.
 11. Scraper failures: log the reason, move to the next company, queue for human review.
-12. Feedback loop (added 2026-11-12): when the Growth Lead edits or rejects a draft on the Review screen, store the before, the after and the context (role, role tier, company stage, sector, trigger) in the Neon `corrections` table; before writing a new draft, retrieve his most relevant past corrections and add them to the writer's prompt. Track the disagreement score over time.
+12. Feedback loop (added 2026-11-12): when the Growth Lead edits or rejects a draft on the Review screen, store the before, the after, which parts changed (subject, hook, pain, value, ask) and the context (role, role tier, company stage, sector, trigger) in the Neon `corrections` table; before writing a new draft, retrieve his most relevant past corrections and add them to the writer's prompt. Track the disagreement score over time.
 
 Exclusions: follow-ups, reply handling, calendar booking, CRM updates; fully autonomous sending (check 07); LinkedIn and third-party review research (scope and legal exposure).
 Judged by: Test 1 (email lands) via 5, 6, 7, 8, 9; Test 2 (defensible) via 1, 2, 3, 4, 6, 7, 8.

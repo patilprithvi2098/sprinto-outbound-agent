@@ -17,6 +17,7 @@ CREATE TABLE corrections (
   body_after text NOT NULL,
   reason text,                     -- optional: why he changed it, in his words
   disagreement real NOT NULL CHECK (disagreement BETWEEN 0 AND 1),  -- share of the draft that changed
-  rejected boolean NOT NULL DEFAULT false
+  rejected boolean NOT NULL DEFAULT false,
+  changed_parts text[] NOT NULL DEFAULT '{}'  -- which parts he changed: subject, hook, pain, value, ask (added 2026-11-12)
 );
 CREATE INDEX corrections_lookup ON corrections (operator, role_tier, created_at DESC);
