@@ -1,0 +1,11 @@
+{
+  "_note": "Defaults to confirm with the operator in Phase 2: role order and the confidence cut-off.",
+  "min_confidence": 70,
+  "role_priority": [
+    {"tier": 1, "label": "security, compliance or risk", "keywords": ["security", "compliance", "grc", "risk", "trust", "privacy", "ciso"]},
+    {"tier": 2, "label": "engineering leadership", "keywords": ["cto", "chief technology officer", "vp engineering", "vp of engineering", "head of engineering", "vice president of engineering"]},
+    {"tier": 3, "label": "operations", "keywords": ["coo", "chief operating officer", "operations"]},
+    {"tier": 4, "label": "CEO or founder", "keywords": ["ceo", "chief executive officer", "founder", "co-founder", "cofounder"]}
+  ],
+  "banned_phrases": ["seamless", "leverage", "robust", "streamline", "unlock", "empower", "fast-paced", "game-changer", "synergies", "in today's fast-paced landscape", "I hope this finds you well", "quick question", "circling back", "just following up", "How are you doing today?"]
+}

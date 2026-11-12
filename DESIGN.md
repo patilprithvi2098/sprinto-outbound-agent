@@ -24,7 +24,7 @@ Breakpoints: phone < 640, tablet < 1024, desktop.
 Within the detail, no card inside a card: the draft is separated by a 2 px ink rule, not a box.
 
 ## Screens
-**1. Run.** Opened Monday morning to answer "which domains do I run this week?". Fields: domain box (paste 8-15), domain count, Hunter searches left this month (X of 25), cost estimate. Actions: Run, Clear. Empty: placeholder showing one example domain. Error: invalid domains listed inline with the reason. Phone: single column, Run button full width. Never hunt for: the Hunter quota.
+**1. Run.** Opened Monday morning to answer "which domains do I run this week?". Fields: domain box (paste 8-15), domain count, Hunter searches left this month (X of the plan total, read live; 50 on this account), cost estimate. Actions: Run, Clear. Empty: placeholder showing one example domain. Error: invalid domains listed inline with the reason. Phone: single column, Run button full width. Never hunt for: the Hunter quota.
 
 **2. Review (first screen).** Opened when the run finishes, to answer "do I trust this company, this person and this email enough to send?".
 - Header: "Run of N domains", run time, Hunter searches left, and three counts (need you, drafts ready, dropped).

@@ -33,7 +33,7 @@ Build, with a human at the send step. 01 YES, 02 YES, 03 UNCERTAIN (resolved by 
 2. Qualify on B2B SaaS, no badge, and growing or selling to enterprises (stage from funding, headcount, open roles, enterprise pricing tier). Too small or too early: disqualify, or low rank and flag.
 3. Capped agent loop: model fills `certified`, `b2b_saas`, `stage` (and `trigger`); code checks for empty fields; fetch the page where that fact lives; stop when filled or after 4 extra fetches, then flag for a human.
 4. Evidence-backed decision per company: verdict, facts found, source page, ICP rule applied.
-5. Hunter after qualification only; the 25 searches a month are for qualified companies.
+5. Hunter after qualification only; the monthly searches (50 on this account; the quota is read live) are for qualified companies.
 6. Pick the person by role priority, not seniority; record why.
 7. Two specific pain points from the company's own public signal and the person's role.
 8. Personalised email by name: observed signal, likely problem, reason to talk, CTA; art-of-selling rules in the prompt.

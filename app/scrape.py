@@ -32,7 +32,9 @@ def assert_public(host):
 class _RedirectGuard(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, req, fp, code, msg, headers, newurl):
         assert_public(urlparse(newurl).hostname or "")
-        return super().redirect_request(req, fp, code, msg, headers, newurl)
+        return super().redirect_request(req, fp, 307 if code == 308 else code, msg, headers, newurl)
+
+    http_error_308 = urllib.request.HTTPRedirectHandler.http_error_302  # Python 3.9 does not follow 308
 
 
 class _Text(HTMLParser):
