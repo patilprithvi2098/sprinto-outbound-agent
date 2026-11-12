@@ -20,9 +20,9 @@ def load_env():
             os.environ[key.strip()] = value.strip().strip("\"'")
 
 
-def get_json(url, headers=None):
+def get_json(url, headers=None, timeout=10):
     request = urllib.request.Request(url, headers=dict(_UA, **(headers or {})))
-    with urllib.request.urlopen(request, timeout=10) as response:
+    with urllib.request.urlopen(request, timeout=timeout) as response:
         return json.load(response)
 
 

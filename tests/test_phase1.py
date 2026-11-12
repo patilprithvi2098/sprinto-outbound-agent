@@ -7,7 +7,9 @@ from pipeline import email_body, pick_contact, qualify, role_tier  # noqa: E402
 
 BASE = {"certified": "unknown", "certified_quote": "", "certified_in_progress": False,
         "b2b_saas": "yes", "b2b_saas_quote": "Workflow software for finance teams",
-        "stage": "Series A", "stage_quote": "backed by our $18M Series A", "trigger": "unknown", "trigger_quote": ""}
+        "stage": "Series A", "stage_quote": "backed by our $18M Series A", "trigger": "unknown", "trigger_quote": "",
+        "funding_round": "series-a", "funding_round_quote": "backed by our $18M Series A",
+        "team_size": 0, "team_size_quote": "", "enterprise_signal": False, "enterprise_signal_quote": ""}
 
 
 def person(position, confidence=90, status="valid", first="Asha"):
