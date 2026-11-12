@@ -7,6 +7,7 @@ Fill these fields:
 - what_it_does: one plain sentence on what the company sells and to whom, from the page.
 - certified: "yes" only if the page says this company itself holds a named security certification (SOC 2, SOC 2 Type II, ISO 27001, ISO 27701, HIPAA attestation, PCI DSS). "no" only if the page says it does not have one yet (for example "SOC 2 in progress", "working towards ISO 27001"). Otherwise "unknown".
   - A named standard with "compliant", "certified", "Type 2", "Type II", "attested", "audited" or "achieved" means "yes" (for example "SOC 2 Type 2 compliant", "ISO 27001 certified").
+  - Independent audits of this company against a named standard also mean "yes": for example "third parties audit us against SOC 2 Type II", "our ISO 27001 certification audit", or audit reports or certificates offered in a Trust Center.
   - Never infer certification from vague words with no named standard, like "secure", "enterprise-grade", "bank-level security" or just "compliant".
   - If the company sells compliance or security tooling, "we help you get SOC 2" is about its customers, not itself: that is not "yes".
 - certified_in_progress: true only if the page says a certification is in progress or planned.

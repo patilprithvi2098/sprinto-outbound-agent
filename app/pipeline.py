@@ -89,7 +89,7 @@ def get_page(domain, path):
 
 def extract(page_text, url):
     fields = ask_json(HAIKU, _prompt("extract"), "URL: %s\n<page>\n%s\n</page>" % (url, page_text[:PAGE_CHARS]),
-                      EXTRACT_SCHEMA, effort="low")
+                      EXTRACT_SCHEMA, effort="medium")  # low effort missed audit wording (retool.com, Phase 6)
     page = _norm(page_text)
     for name in FIELDS + ("funding_round", "team_size", "enterprise_signal"):
         if _norm(fields[name + "_quote"]) not in page:  # a paraphrase is not evidence
