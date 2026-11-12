@@ -31,7 +31,7 @@ class Handler(SimpleHTTPRequestHandler):
 
     def do_GET(self):
         if self.path == "/api/setup-check":
-            return self._json(200, checks.run_all())
+            return self._json(200, dict(checks.run_all(), estimate={"cost_per_company": runs.cost_per_company()}))
         if self.path == "/api/quota":  # Hunter only: the Review screen should not log in to Gmail on every load
             return self._json(200, checks.check_hunter())
         if self.path == "/api/feedback":

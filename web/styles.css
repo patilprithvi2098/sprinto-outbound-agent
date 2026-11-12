@@ -114,6 +114,7 @@ textarea.body-field { font: 17px/1.6 var(--font); min-height: 320px; max-width: 
 .counts .hint { font-size: 12px; font-weight: 400; }
 .notice { background: var(--warning-bg); color: var(--warning); border-radius: var(--radius); padding: var(--s3); margin-bottom: var(--s5); font-weight: 600; }
 .notice[hidden] { display: none; }
+.setup .notice, .result .notice { margin: var(--s2) 0 0; font-size: 14px; }
 #act-note { margin-top: var(--s2); }
 .error[hidden] { display: none; }
 .reasons { max-width: 62ch; font-size: 14px; }

@@ -35,8 +35,9 @@ def main(args):
     meta = {"id": run_id, "started_at": datetime.now(timezone.utc).isoformat(), "finished_at": None,
             "domains": parsed["valid"]}
     meta_path.write_text(json.dumps(meta, indent=2))  # so the Review screen can show terminal runs too
+    halt = {}
     for domain in parsed["valid"]:
-        r = run_company(domain, run_id, writer=writer, send=send)
+        r = run_company(domain, run_id, writer=writer, send=send, halt=halt)
         status = (r.get("review") or {}).get("status") or r["verdict"]
         print("%-12s %-24s %s" % (status.upper(), domain, r["reason"]))
         if r.get("draft", {}).get("body"):

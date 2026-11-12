@@ -1,7 +1,11 @@
 """Send a draft to the operator's own inbox. There is no way to pass a recipient: it is always OPERATOR_EMAIL."""
 import os
 import smtplib
+import time
 from email.message import EmailMessage
+
+
+RETRY_WAIT = 2
 
 
 def send_to_operator(subject, body):
@@ -10,6 +14,15 @@ def send_to_operator(subject, body):
     message = EmailMessage()
     message["From"], message["To"], message["Subject"] = sender, recipient, subject
     message.set_content(body)
-    with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=20) as smtp:
-        smtp.login(sender, os.environ["GMAIL_APP_PASSWORD"].replace(" ", ""))
-        smtp.send_message(message)
+    for attempt in (1, 2):
+        try:
+            with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=20) as smtp:
+                smtp.login(sender, os.environ["GMAIL_APP_PASSWORD"].replace(" ", ""))
+                smtp.send_message(message)
+            return
+        except smtplib.SMTPAuthenticationError:
+            raise  # a rejected login will not pass on a second try
+        except Exception:
+            if attempt == 2:
+                raise
+            time.sleep(RETRY_WAIT)

@@ -39,9 +39,10 @@ def start(domains):
         (run_dir / "run.json").write_text(json.dumps(meta, indent=2))
 
         def work():
+            halt = {}
             for domain in domains:
                 try:
-                    pipeline.run_company(domain, run_id, send=False, apply_corrections=not paused)  # sending is the operator's click on Review
+                    pipeline.run_company(domain, run_id, send=False, apply_corrections=not paused, halt=halt)  # sending is the operator's click on Review
                 except Exception as e:  # one company failing never stops the run
                     (run_dir / ("%s.json" % domain)).write_text(json.dumps({
                         "domain": domain, "run_id": run_id, "verdict": "flagged", "flags": [],
@@ -74,6 +75,13 @@ def loop_summary():
                 acted.append((when, review["disagreement"]))
     last = [d for _, d in sorted(acted)[-10:]]
     return {"drafts_counted": len(last), "avg_disagreement": round(sum(last) / len(last), 2) if last else None}
+
+
+def cost_per_company():
+    """Measured Claude cost per company, for the estimate on the Run screen."""
+    costs = [c for c in (json.loads(p.read_text()).get("claude_cost_usd") for p in RUNS.glob("*/*.json")
+                         if p.name != "run.json") if c]
+    return round(sum(costs) / len(costs), 3) if costs else None
 
 
 def _save_correction(record, review, row):

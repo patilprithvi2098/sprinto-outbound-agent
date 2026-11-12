@@ -79,6 +79,9 @@ def check_gmail():
         return _result(True, "Login accepted as %s. Emails will go to %s only." % (sender, recipient))
     except smtplib.SMTPAuthenticationError:
         return _result(False, "Gmail rejected the login. Use an app password, not your normal password.")
+    except smtplib.SMTPServerDisconnected:  # Gmail often hangs up on a bad login instead of answering it
+        return _result(False, "Gmail closed the connection during login. The address or the app password is "
+                              "probably wrong.")
     except Exception as e:
         return _result(False, "Could not reach Gmail (%s)." % type(e).__name__)
 

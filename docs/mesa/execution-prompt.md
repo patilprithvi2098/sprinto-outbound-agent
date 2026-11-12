@@ -109,6 +109,8 @@ The Growth Lead reviews every draft before any real send. In this build "Send to
 11. Writer refuses ("CANNOT WRITE THIS EMAIL"): show the refusal and the missing field under Needs you.
 12. Double click on Send: only one email goes out.
 
+As built (Phase 5): the headless-browser fallback is the installed Google Chrome run once with `--headless=new --dump-dom` in a temporary profile; retries and the run-level Hunter stop live in `app/claude.py`, `app/scrape.py`, `app/mailer.py` and `app/pipeline.py`; the cost cap is `max_run_cost_usd` in `config/icp.json`; the weekly kill check is `python3 metrics.py`.
+
 ## Build Requirements
 See `docs/mesa/brief.md` for the approved Build Requirements Brief (11 numbered must-haves, 4 exclusions with reasons, how it is judged). The one result to show first: the finished email with its reasoning directly under it; the demo leads with the result and drills back through the evidence when challenged. Excluded on purpose: follow-ups, reply handling, calendar booking, CRM updates, fully autonomous sending, LinkedIn or third-party research.
 

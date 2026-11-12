@@ -3,11 +3,13 @@ import json
 import os
 import re
 import time
+import urllib.error
 import urllib.parse
 from datetime import datetime, timezone
 from pathlib import Path
 
 import checks
+import claude
 import feedback
 from claude import HAIKU, SONNET, ClaudeError, ask_json
 from mailer import send_to_operator
@@ -238,6 +240,13 @@ def pick_contact(people, require_tier1=False):
     }, len(people)
 
 
+class HunterStop(RuntimeError):
+    """Bad key or no searches left: asking again in this run cannot work."""
+
+
+HUNTER_ATTEMPTS, HUNTER_WAIT = 3, 2.0
+
+
 def hunter_people(domain):
     """One Hunter search per domain, reused for 7 days so a re-run never spends twice."""
     cache = DATA / "cache" / domain / "hunter.json"
@@ -245,16 +254,28 @@ def hunter_people(domain):
         return json.loads(cache.read_text()), False
     quota = checks.check_hunter()
     if not quota["ok"]:
+        if "rejected the key" in quota["detail"]:
+            raise HunterStop(quota["detail"])
         raise RuntimeError(quota["detail"])
     if quota["searches_left"] <= 0:
-        raise RuntimeError("Hunter has no searches left this month.")
+        raise HunterStop("Hunter has no searches left this month.")
     query = urllib.parse.urlencode({"domain": domain, "limit": 10, "required_field": "position",
                                     "seniority": "senior,executive", "api_key": os.environ["HUNTER_API_KEY"]})
-    try:
-        # filtered searches can take Hunter well over 10 s
-        people = checks.get_json("https://api.hunter.io/v2/domain-search?" + query, timeout=45)["data"].get("emails", [])
-    except Exception as e:
-        raise RuntimeError("Hunter search failed (%s)." % type(e).__name__)  # no URL: it holds the key
+    for attempt in range(1, HUNTER_ATTEMPTS + 1):
+        try:
+            # filtered searches can take Hunter well over 10 s
+            people = checks.get_json("https://api.hunter.io/v2/domain-search?" + query, timeout=45)["data"].get("emails", [])
+            break
+        except urllib.error.HTTPError as e:  # no URL in any message: it holds the key
+            if e.code in (401, 403):
+                raise HunterStop("Hunter rejected the key (HTTP %d)." % e.code)
+            if e.code == 429:
+                raise HunterStop("Hunter says the search limit is used up (HTTP 429).")
+            raise RuntimeError("Hunter search failed (HTTP %d)." % e.code)
+        except Exception as e:
+            if attempt == HUNTER_ATTEMPTS:
+                raise RuntimeError("Hunter did not answer on %d tries (%s)." % (HUNTER_ATTEMPTS, type(e).__name__))
+            time.sleep(HUNTER_WAIT * attempt)
     cache.parent.mkdir(parents=True, exist_ok=True)
     cache.write_text(json.dumps(people))
     return people, True
@@ -350,7 +371,11 @@ def inbox_email(record):
 
 # ---------- one company ----------
 
-def run_company(domain, run_id, writer=SONNET, send=True, apply_corrections=True):
+def run_company(domain, run_id, writer=SONNET, send=True, apply_corrections=True, halt=None):
+    """`halt` is one dict shared by every company in a run: it carries the Hunter stop and the cost so far."""
+    halt = {} if halt is None else halt
+    cost_at_start = claude.spent["usd"]
+    run_cost_start = halt.setdefault("cost_start", cost_at_start)
     run_dir = DATA / "runs" / run_id
     run_dir.mkdir(parents=True, exist_ok=True)
     path = run_dir / ("%s.json" % domain)
@@ -358,10 +383,14 @@ def run_company(domain, run_id, writer=SONNET, send=True, apply_corrections=True
               "flags": [], "record_path": str(path.relative_to(ROOT))}
 
     def done(verdict, reason, **extra):
-        record.update(verdict=verdict, reason=reason, **extra)
+        record.update(verdict=verdict, reason=reason, claude_cost_usd=round(claude.spent["usd"] - cost_at_start, 4),
+                      **extra)
         path.write_text(json.dumps(record, indent=2))
         return record
 
+    if cost_at_start - run_cost_start >= CONFIG["max_run_cost_usd"]:
+        return done("flagged", "Not researched: this run reached its Claude cost cap of $%.2f."
+                    % CONFIG["max_run_cost_usd"], rule_applied="cost cap")
     try:
         found = research(domain)
     except ClaudeError as e:
@@ -380,8 +409,13 @@ def run_company(domain, run_id, writer=SONNET, send=True, apply_corrections=True
         return done("flagged", "CANNOT WRITE THIS EMAIL: no trigger found on %d page(s)." % len(found["pages"]),
                     rule_applied=rule, draft={"refusal": "missing field: trigger"})
 
+    if halt.get("hunter"):  # no more Hunter calls for the rest of this run
+        return done("flagged", "Qualified, but no contact was looked up: %s" % halt["hunter"], rule_applied=rule)
     try:
         people, spent = hunter_people(domain)
+    except HunterStop as e:
+        halt["hunter"] = str(e)
+        return done("flagged", "Qualified, but no contact was looked up: %s" % e, rule_applied=rule)
     except RuntimeError as e:
         return done("flagged", str(e), rule_applied=rule)
     record["hunter_search_spent"] = spent

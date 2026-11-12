@@ -26,7 +26,8 @@
       const n = data.valid.length, word = n === 1 ? "domain" : "domains";
       result.innerHTML =
         `<h2>${n} of ${n + data.rejected.length} accepted</h2>` +
-        (n ? `<p class="muted">Up to <span class="mono">${n}</span> Hunter ${n === 1 ? "search" : "searches"} (only companies that qualify use one) and about <span class="mono">$${(n * COST_PER_COMPANY).toFixed(2)}</span> of Claude usage.</p>` +
+        (n ? `<p class="muted">Up to <span class="mono">${n}</span> Hunter ${n === 1 ? "search" : "searches"} (only companies that qualify use one) and about <span class="mono">$${(n * costPerCompany).toFixed(2)}</span> of Claude usage.</p>` +
+             (huntersLeft !== null && huntersLeft < n ? `<p class="notice">Only ${huntersLeft} Hunter ${huntersLeft === 1 ? "search is" : "searches are"} left this month. Qualified companies beyond that will be flagged with no contact.</p>` : "") +
              `<div class="row"><button class="btn primary" type="button" id="start-btn">Run ${n} ${word}</button></div>` +
              `<p class="error" id="start-error" role="alert" hidden></p>` : "") +
         (ok ? `<ul>${ok}</ul>` : "") +
@@ -39,7 +40,7 @@
     }
   });
 
-  const COST_PER_COMPANY = 0.05; // shortcut: rough Claude cost per company from the Phase 1-2 runs, replace with logged usage in Phase 5
+  let costPerCompany = 0.05, huntersLeft = null; // 0.05 until the app has measured its own runs; both are set by the setup check
   const startRun = async domains => {
     const btn = $("start-btn"), err = $("start-error"), label = btn.textContent;
     if (btn.disabled) return; // a double click starts one run
@@ -74,6 +75,11 @@
         document.querySelector(`[data-detail="${name}"]`).textContent = data[name].detail;
       }
       $("quota").textContent = data.hunter.ok ? `${data.hunter.searches_left} of ${data.hunter.searches_total}` : "-";
+      huntersLeft = data.hunter.ok ? data.hunter.searches_left : null;
+      if (data.estimate && data.estimate.cost_per_company) costPerCompany = data.estimate.cost_per_company;
+      const low = $("quota-low");
+      low.hidden = !(data.hunter.ok && huntersLeft <= 5);
+      low.textContent = huntersLeft === 0 ? "No searches left: runs will qualify companies but find no contacts until next month." : `Running low: ${huntersLeft} left.`;
     } catch (err) {
       ["claude", "hunter", "gmail"].forEach(n => {
         setChip(n, "bad", "Needs you");

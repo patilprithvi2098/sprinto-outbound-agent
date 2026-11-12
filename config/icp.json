@@ -4,6 +4,7 @@
   "too_small": {"max_team_size": 15, "early_rounds": ["pre-seed"]},
   "large_company": {"rounds": ["series-c-or-later", "public"], "min_team_size": 300},
   "max_extra_fetches": 4,
+  "max_run_cost_usd": 2.0,
   "evidence_map": [
     {"field": "certified", "pages": ["/security", "/trust"], "max_fetches": 1},
     {"field": "b2b_saas", "pages": ["/product", "/about"], "max_fetches": 1},

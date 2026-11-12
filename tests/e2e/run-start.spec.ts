@@ -97,3 +97,33 @@ test("layout: the Run button is in view and nothing scrolls sideways", async ({ 
   await expect(runBtn(page)).toBeInViewport();
   expect(await hasHorizontalOverflow(page)).toBe(false);
 });
+
+// ---------- Phase 5: quota warnings and the measured cost ----------
+
+async function openWith(page: Page, hunterLeft: number, costPerCompany: number | null) {
+  guardDialogs(page);
+  const setup = { ...SETUP, hunter: { ...SETUP.hunter, searches_left: hunterLeft }, estimate: { cost_per_company: costPerCompany } };
+  await page.route("**/api/setup-check", (r) => r.fulfill({ contentType: "application/json", body: JSON.stringify(setup) }));
+  await page.goto("/");
+  await expect(page.locator("#quota")).toHaveText(`${hunterLeft} of 50`);
+}
+
+test("the cost estimate uses what earlier runs actually cost", async ({ page }) => {
+  await openWith(page, 43, 0.08);
+  await check(page, "kestrelmetrics.io\ntallybook.co");
+  await expect(page.getByText("$0.16")).toBeVisible();
+  await expect(page.locator("#quota-low")).toBeHidden();
+});
+
+test("a low Hunter quota is called out before the run, not after", async ({ page }) => {
+  await openWith(page, 2, null);
+  await expect(page.getByText("Running low: 2 left.")).toBeVisible();
+  await check(page, "kestrelmetrics.io\ntallybook.co\nfernpay.com");
+  await expect(page.getByText(/Only 2 Hunter searches are left this month/)).toBeVisible();
+  await expect(runBtn(page)).toBeEnabled(); // he can still run: research and qualification need no Hunter search
+});
+
+test("no Hunter searches left is stated plainly", async ({ page }) => {
+  await openWith(page, 0, null);
+  await expect(page.getByText(/No searches left: runs will qualify companies but find no contacts/)).toBeVisible();
+});
