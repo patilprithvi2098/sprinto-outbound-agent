@@ -367,7 +367,7 @@ def run_company(domain, run_id, writer=SONNET, send=True):
     record.update(name=fields["company_name"], fields=fields, evidence=found["evidence"],
                   extra_fetches_used=found["extra_fetches_used"], loop_stop=found["stop"])
     verdict, rule, reason, flags = qualify(fields, found["stop"])
-    record["flags"] = flags
+    record.update(flags=flags, qualify_reason=reason)  # kept apart from the final reason, which may be a hold
     if verdict != "qualified":
         return done(verdict, reason, rule_applied=rule)  # disqualified or unclear: no Hunter, no email
     if not _known(fields["trigger"]):  # checked before Hunter so no search is spent on an email we cannot write

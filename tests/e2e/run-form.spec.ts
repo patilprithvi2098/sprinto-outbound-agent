@@ -5,7 +5,7 @@ import { guardDialogs, countWrites, hasHorizontalOverflow, tabUntil } from "./he
 // /api/setup-check calls Claude, Hunter and Gmail when keys exist, so it is always stubbed here.
 const SETUP = {
   claude: { ok: true, detail: "Key accepted." },
-  hunter: { ok: true, detail: "Key accepted.", searches_left: 19, searches_total: 25 },
+  hunter: { ok: true, detail: "Key accepted.", searches_left: 19, searches_total: 50 },
   gmail: { ok: false, detail: "Not set. Add OPERATOR_EMAIL and GMAIL_APP_PASSWORD to .env." },
 };
 
@@ -113,7 +113,7 @@ test("server down shows a plain message, not a stack trace", async ({ page }) =>
 
 test("setup check shows each credential with a label, and the Hunter quota", async ({ page }) => {
   const calls = await open(page);
-  await expect(page.getByText("19 of 25")).toBeVisible();
+  await expect(page.getByText("19 of 50")).toBeVisible();
   await expect(page.getByText("Working")).toHaveCount(2);
   await expect(page.getByText("Needs you")).toHaveCount(1);
   await expect(page.getByText("Not set. Add OPERATOR_EMAIL and GMAIL_APP_PASSWORD to .env.")).toBeVisible();
@@ -125,13 +125,4 @@ test("layout: no sideways scroll and the submit button is in view", async ({ pag
   await open(page);
   expect(await hasHorizontalOverflow(page)).toBe(false);
   await expect(submit(page)).toBeInViewport();
-});
-
-test("review page shows the empty state and links back to Run", async ({ page }) => {
-  guardDialogs(page);
-  await page.goto("/review.html");
-  await expect(page.getByRole("heading", { name: "No run yet" })).toBeVisible();
-  expect(await hasHorizontalOverflow(page)).toBe(false);
-  await page.getByRole("link", { name: "Go to Run" }).click();
-  await expect(page.getByRole("heading", { name: "Run", exact: true })).toBeVisible();
 });

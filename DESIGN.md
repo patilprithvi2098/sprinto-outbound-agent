@@ -22,6 +22,7 @@ Line length: 62ch maximum for email and evidence text.
 Grid: two columns on desktop (list about 1fr, detail about 2fr); single column below 820 px. Spacing scale: 4 / 8 / 12 / 16 / 24 / 32. Radius: 10 px everywhere. Borders over shadows; no shadows. Density: comfortable.
 Breakpoints: phone < 640, tablet < 1024, desktop.
 Within the detail, no card inside a card: the draft is separated by a 2 px ink rule, not a box.
+On desktop the Review list scrolls on its own beside the detail (sticky, like a mail client), so a long run never pushes the detail out of view (added in Phase 3 after the detector flagged a column running far past the fold).
 
 ## Screens
 **1. Run.** Opened Monday morning to answer "which domains do I run this week?". Fields: domain box (paste 8-15), domain count, Hunter searches left this month (X of the plan total, read live; 50 on this account), cost estimate. Actions: Run, Clear. Empty: placeholder showing one example domain. Error: invalid domains listed inline with the reason. Phone: single column, Run button full width. Never hunt for: the Hunter quota.
