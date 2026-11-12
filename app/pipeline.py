@@ -313,10 +313,12 @@ def check_draft(d, labels):
     return trace, counts, ("flagged" if problems else "ready"), problems
 
 
-def grade(d, pack):
+def grade(d, pack, style=()):
     numbered = "\n".join("%d. %s" % (n, s) for n, s in enumerate(split_sentences(d), 1))
-    result = ask_json(HAIKU, _prompt("grade"), "<pack>\n%s\n</pack>\n<sentences>\n%s\n</sentences>"
-                      % (json.dumps(pack, indent=1), numbered), GRADE_SCHEMA, effort="medium")
+    user = "<pack>\n%s\n</pack>\n<sentences>\n%s\n</sentences>" % (json.dumps(pack, indent=1), numbered)
+    if style:  # the operator's own rewrites: allowed phrasing, never facts
+        user += "\n<operator_style>\n%s\n</operator_style>" % "\n---\n".join(style)
+    result = ask_json(HAIKU, _prompt("grade"), user, GRADE_SCHEMA, effort="medium")
     return check_draft(d, {x["n"]: x for x in result["labels"]})
 
 
@@ -412,7 +414,8 @@ def run_company(domain, run_id, writer=SONNET, send=True, apply_corrections=True
                     rule_applied=rule, draft=dict(draft, refusal=draft["missing_field"]), pack=pack)
     draft["body"] = email_body(contact["first_name"], draft)
     try:
-        draft["trace"], draft["counts"], draft["grader_verdict"], problems = grade(draft, pack)
+        draft["trace"], draft["counts"], draft["grader_verdict"], problems = grade(
+            draft, pack, [r["body_after"] for r in found["rows"]])
     except ClaudeError as e:
         return done("flagged", "Draft not checked: %s" % e, rule_applied=rule, draft=draft, pack=pack)
     record.update(rule_applied=rule, reason=reason, draft=draft, pack=pack)
