@@ -67,13 +67,14 @@ def check_hunter():
 
 
 def check_gmail():
-    address, password = os.environ.get("OPERATOR_EMAIL"), os.environ.get("GMAIL_APP_PASSWORD")
-    if not address or not password:
+    recipient, password = os.environ.get("OPERATOR_EMAIL"), os.environ.get("GMAIL_APP_PASSWORD")
+    sender = os.environ.get("GMAIL_SENDER") or recipient  # the account that logs in; mail still goes only to OPERATOR_EMAIL
+    if not recipient or not password:
         return _result(False, "Not set. Add OPERATOR_EMAIL and GMAIL_APP_PASSWORD to .env.")
     try:
         with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=10) as smtp:
-            smtp.login(address, password)
-        return _result(True, "Login accepted. Emails will go to %s only." % address)
+            smtp.login(sender, password.replace(" ", ""))  # Google shows app passwords in groups of four
+        return _result(True, "Login accepted as %s. Emails will go to %s only." % (sender, recipient))
     except smtplib.SMTPAuthenticationError:
         return _result(False, "Gmail rejected the login. Use an app password, not your normal password.")
     except Exception as e:
