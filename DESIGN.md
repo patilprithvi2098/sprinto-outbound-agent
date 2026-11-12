@@ -30,6 +30,7 @@ Within the detail, no card inside a card: the draft is separated by a 2 px ink r
 - Header: "Run of N domains", run time, Hunter searches left, and three counts (need you, drafts ready, dropped).
 - Left list grouped as Needs you, Drafts to review, Dropped with reason. Each item: company, one-line why with source page, status chip.
 - Detail on the right: company, domain, status; then the draft (subject, body) with Send to my inbox, I rewrote it, Skip; then evidence: why this company, why this person, two pains, what this role is measured on, trace line (N of M sentences from the pack, generic, made up, banned).
+- Feedback loop (Phase 4): the draft's subject and body are editable in place, with an optional one-line "Why did you change it?" field under them. An edited draft that is sent becomes Rewritten automatically, so the "I rewrote it" button is only for edits made outside the app. The header gains one more figure: average disagreement over the last 10 drafts.
 - Statuses: Qualified, Sent to me, Rewritten, Disqualified, Flagged. Each has an icon and a label; never colour alone.
 - Flagged and refused companies show "No draft" with the reason and Open for manual review.
 - Empty: "No run yet. Paste domains on the Run screen." Error: a failed company shows its reason in plain words ("site blocked automated access") and never an empty row. Phone: list becomes cards, the selected card expands in place with the email first.

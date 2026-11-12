@@ -15,7 +15,8 @@ Working means: (1) a personalised email lands in his inbox, addressed to a named
 | Personalised email by name with a hook | Writer uses only filled pack fields; grader traces every sentence | Covered |
 | Send via Gmail (hardcode to: own address) | Gmail API, own address only | Covered |
 | Defend every decision | One JSON decision record per company | Covered |
-| Follow-ups, replies, calendar booking, CRM, win/loss, feedback loop | Not in the brief | Excluded (next version) |
+| Follow-ups, replies, calendar booking, CRM, win/loss | Not in the brief | Excluded (next version) |
+| Feedback loop (from class L5; not in the brief) | Added by the user on 2026-11-12, reversing the earlier exclusion: corrections he makes to drafts are stored in Neon Postgres and fed into later drafts | Covered (Phase 4) |
 
 ## Nine Checks verdict
 Build, with a human at the send step. 01 YES, 02 YES, 03 UNCERTAIN (resolved by the Phase 0 feasibility test), 04 YES, 05 YES, 08 YES, 06 YES (to own inbox), 07 YES, 09 YES. Killed: full autonomy (check 07) and LinkedIn research of the person (check 03 and L4 login-wall rule). Open: Sprinto's current reply-rate baseline is unmeasured.
@@ -39,7 +40,8 @@ Build, with a human at the send step. 01 YES, 02 YES, 03 UNCERTAIN (resolved by 
 9. Send via Gmail to the operator's own address only; decision record is a separate file per company.
 10. A human reviews every draft before any real send.
 11. Scraper failures: log the reason, move to the next company, queue for human review.
+12. Feedback loop (added 2026-11-12): when the Growth Lead edits or rejects a draft on the Review screen, store the before, the after and the context (role, role tier, company stage, sector, trigger) in the Neon `corrections` table; before writing a new draft, retrieve his most relevant past corrections and add them to the writer's prompt. Track the disagreement score over time.
 
-Exclusions: follow-ups, reply handling, calendar booking, CRM updates; feedback-loop learning (Phase 2); fully autonomous sending (check 07); LinkedIn and third-party review research (scope and legal exposure).
+Exclusions: follow-ups, reply handling, calendar booking, CRM updates; fully autonomous sending (check 07); LinkedIn and third-party review research (scope and legal exposure).
 Judged by: Test 1 (email lands) via 5, 6, 7, 8, 9; Test 2 (defensible) via 1, 2, 3, 4, 6, 7, 8.
 First result to show: the finished email with its reasoning directly under it, then drill back through the evidence.
