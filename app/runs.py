@@ -81,7 +81,7 @@ def cost_per_company():
     """Measured Claude cost per company, for the estimate on the Run screen."""
     costs = [c for c in (json.loads(p.read_text()).get("claude_cost_usd") for p in RUNS.glob("*/*.json")
                          if p.name != "run.json") if c]
-    return round(sum(costs) / len(costs), 3) if costs else None
+    return round(sum(costs) / len(costs), 3) if len(costs) >= 10 else None  # too few to trust: the screen keeps its default
 
 
 def _save_correction(record, review, row):
