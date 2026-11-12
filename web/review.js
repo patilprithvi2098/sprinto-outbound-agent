@@ -102,7 +102,7 @@
       const d = r.draft, rev = r.review || {}, sent = !!rev.sent_at, skipped = !!rev.skipped;
       const learned = rev.correction ? (rev.correction.saved ? " Saved to the feedback loop." : ` Not saved to the feedback loop: ${rev.correction.note}.`) : "";
       const parts = (rev.changed_parts || []).length ? ` You changed: ${rev.changed_parts.join(", ")}.` : "";
-      const note = (sent ? `Sent to your inbox ${new Date(rev.sent_at).toLocaleString([], { hour: "2-digit", minute: "2-digit", day: "numeric", month: "short" })}.${parts}` : skipped ? "Skipped. Nothing will be sent." : "") + learned;
+      const note = (sent ? `Sent to your inbox ${new Date(rev.sent_at).toLocaleString([], { hour: "2-digit", minute: "2-digit", day: "numeric", month: "short" })}.${parts || (rev.disagreement === 0 && !rev.rewritten ? " Sent as written, so nothing was stored for the feedback loop." : "")}` : skipped ? "Skipped. Nothing will be sent." : "") + learned;
       const used = ((r.feedback_loop || {}).corrections_used || []).length;
       const loopLine = used ? `<p>Written with ${used} of your earlier ${used === 1 ? "correction" : "corrections"} in mind.${r.feedback_loop.pattern ? " " + esc(r.feedback_loop.pattern) : ""}</p>` : "";
       return head + `<div class="draft">${editableDraft(r)}` +

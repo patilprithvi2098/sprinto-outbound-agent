@@ -24,6 +24,11 @@ class Handler(SimpleHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def end_headers(self):
+        if not self.path.startswith("/api/"):  # API replies set their own header
+            self.send_header("Cache-Control", "no-cache")  # always recheck pages and scripts, so the browser never runs an old screen
+        super().end_headers()
+
     def do_GET(self):
         if self.path == "/api/setup-check":
             return self._json(200, checks.run_all())
