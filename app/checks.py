@@ -71,6 +71,8 @@ def check_gmail():
     sender = os.environ.get("GMAIL_SENDER") or recipient  # the account that logs in; mail still goes only to OPERATOR_EMAIL
     if not recipient or not password:
         return _result(False, "Not set. Add OPERATOR_EMAIL and GMAIL_APP_PASSWORD to .env.")
+    if "@" not in sender or " " in sender:  # Gmail just drops the connection on a malformed login name
+        return _result(False, "GMAIL_SENDER is not an email address. Put your full Gmail address there.")
     try:
         with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=10) as smtp:
             smtp.login(sender, password.replace(" ", ""))  # Google shows app passwords in groups of four
