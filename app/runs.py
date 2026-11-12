@@ -117,7 +117,7 @@ def act(run_id, domain, action, edits=None):
     """send | rewrote | skip on one record. `edits` may carry the operator's subject, body and reason.
     Returns (record, None) or (None, (http code, message))."""
     edits = edits or {}
-    if not RUN_ID.match(run_id or "") or action not in ("send", "rewrote", "skip"):
+    if not RUN_ID.fullmatch(run_id or "") or action not in ("send", "rewrote", "skip"):
         return None, (400, "Bad request.")
     path = RUNS / run_id / ("%s.json" % domain)
     meta_path = RUNS / run_id / "run.json"

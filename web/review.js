@@ -96,8 +96,10 @@
     const head = `<div class="detail-head"><h2>${esc(r.name || r.domain)}</h2>${chip(r.status)}</div><p class="mono muted">${esc(r.domain)}</p>`;
     if (r.pending) return head + `<p class="muted">${esc(why(r))}</p>`;
     const flags = (r.flags || []).length ? `<ul class="flags">${r.flags.map(f => `<li><svg aria-hidden="true"><use href="#i-flag"/></svg>${esc(f)}</li>`).join("")}</ul>` : "";
-    const companyWhy = r.qualify_reason || (ready(r) ? r.reason : ""); // a flagged record's reason is already shown under No draft
-    const company = `<h3>Why this company</h3>${companyWhy ? `<p>${esc(companyWhy)}</p>` : ""}${evidenceList(r)}${flags}`;
+    // a flagged record's reason is already shown under No draft, so it is not repeated here
+    const companyWhy = ready(r) ? (r.qualify_reason || r.reason) : (r.qualify_reason !== r.reason ? r.qualify_reason || "" : "");
+    const companyBody = `${companyWhy ? `<p>${esc(companyWhy)}</p>` : ""}${evidenceList(r)}${flags}`;
+    const company = companyBody ? `<h3>Why this company</h3>${companyBody}` : "";
     if (ready(r)) {
       const d = r.draft, rev = r.review || {}, sent = !!rev.sent_at, skipped = !!rev.skipped;
       const learned = rev.correction ? (rev.correction.saved ? " Saved to the feedback loop." : ` Not saved to the feedback loop: ${rev.correction.note}.`) : "";

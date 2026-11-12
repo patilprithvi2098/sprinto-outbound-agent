@@ -32,7 +32,8 @@ def render(url):
             out = subprocess.run([CHROME, "--headless=new", "--disable-gpu", "--no-first-run", "--mute-audio",
                                   "--user-data-dir=" + profile, "--user-agent=" + USER_AGENT,
                                   "--virtual-time-budget=8000", "--dump-dom", url],
-                                 capture_output=True, timeout=45)
+                                 capture_output=True, timeout=45,
+                                 env={"PATH": "/usr/bin:/bin", "HOME": profile})  # the site's page runs here: no keys in its environment
             return out.stdout.decode("utf-8", errors="replace")[:MAX_BYTES]
         except Exception:
             return ""
