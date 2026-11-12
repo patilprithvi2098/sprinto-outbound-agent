@@ -15,6 +15,7 @@ for (const p of PAGES) {
     const setup = { claude: { ok: true, detail: "Key accepted." }, hunter: { ok: true, detail: "Key accepted.", searches_left: 43, searches_total: 50 }, gmail: { ok: true, detail: "Login accepted." } };
     await page.route("**/api/setup-check", (r) => r.fulfill({ contentType: "application/json", body: JSON.stringify(setup) }));
     await page.route("**/api/quota", (r) => r.fulfill({ contentType: "application/json", body: JSON.stringify(setup.hunter) }));
+    await page.route("**/api/feedback", (r) => r.fulfill({ contentType: "application/json", body: JSON.stringify({ ok: true, stored: 3, drafts_counted: 4, avg_disagreement: 0.25 }) }));
     await page.route("**/api/runs/latest", (r) => r.fulfill({ contentType: "application/json", body: JSON.stringify(p.data ?? { run: null }) }));
     await page.goto(p.path);
     await page.waitForLoadState("networkidle");

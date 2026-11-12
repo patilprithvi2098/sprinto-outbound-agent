@@ -5,6 +5,7 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 import checks
+import feedback
 import runs
 from domains import parse_domains
 
@@ -28,6 +29,8 @@ class Handler(SimpleHTTPRequestHandler):
             return self._json(200, checks.run_all())
         if self.path == "/api/quota":  # Hunter only: the Review screen should not log in to Gmail on every load
             return self._json(200, checks.check_hunter())
+        if self.path == "/api/feedback":
+            return self._json(200, dict(feedback.status(), **runs.loop_summary()))
         if self.path == "/api/runs/latest":
             return self._json(200, {"run": runs.latest()})
         if self.path.startswith("/api/"):
@@ -61,7 +64,11 @@ class Handler(SimpleHTTPRequestHandler):
                 return self._json(409, {"error": error})
             return self._json(202, {"run_id": run_id, "domains": parsed["valid"], "rejected": parsed["rejected"]})
         if self.path == "/api/action" and all(isinstance(data.get(k), str) for k in ("run_id", "domain", "action")):
-            record, error = runs.act(data["run_id"], data["domain"], data["action"])  # the recipient is never taken from the request
+            edits = {k: data[k] for k in ("subject", "body", "reason") if k in data}
+            limits = {"subject": feedback.MAX_SUBJECT, "body": feedback.MAX_BODY, "reason": feedback.MAX_REASON}
+            if any(not isinstance(v, str) or len(v) > limits[k] for k, v in edits.items()):
+                return self._json(400, {"error": "That text is too long. Shorten it and try again."})
+            record, error = runs.act(data["run_id"], data["domain"], data["action"], edits)  # the recipient is never taken from the request
             if error:
                 return self._json(error[0], {"error": error[1]})
             return self._json(200, {"record": record})

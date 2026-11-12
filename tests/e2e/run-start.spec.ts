@@ -13,6 +13,7 @@ async function open(page: Page) {
   guardDialogs(page);
   await page.route("**/api/setup-check", (r) => r.fulfill({ contentType: "application/json", body: JSON.stringify(SETUP) }));
   await page.route("**/api/runs/latest", (r) => r.fulfill({ contentType: "application/json", body: JSON.stringify(EMPTY_RUN) }));
+  await page.route("**/api/feedback", (r) => r.fulfill({ contentType: "application/json", body: JSON.stringify({ ok: true, drafts_counted: 0, avg_disagreement: null }) }));
   await page.route("**/api/quota", (r) => r.fulfill({ contentType: "application/json", body: JSON.stringify(SETUP.hunter) }));
   await page.goto("/");
 }

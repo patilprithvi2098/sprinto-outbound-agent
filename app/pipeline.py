@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import checks
+import feedback
 from claude import HAIKU, SONNET, ClaudeError, ask_json
 from mailer import send_to_operator
 from scrape import fetch
@@ -261,9 +262,11 @@ def hunter_people(domain):
 
 # ---------- writing and grading ----------
 
-def write_draft(pack, model):
-    return ask_json(model, _prompt("write"), "<pack>\n%s\n</pack>" % json.dumps(pack, indent=1), WRITE_SCHEMA,
-                    effort="high")
+def write_draft(pack, model, corrections=""):
+    user = "<pack>\n%s\n</pack>" % json.dumps(pack, indent=1)
+    if corrections:  # the operator's own past edits, passed as data after the pack
+        user += "\n" + corrections
+    return ask_json(model, _prompt("write"), user, WRITE_SCHEMA, effort="high")
 
 
 def email_body(first_name, d):
@@ -327,7 +330,8 @@ def inbox_email(record):
     """The draft first, the reasoning directly under it."""
     r, c, d = record, record["contact"], record["draft"]
     sources = sorted({e["page_url"] for e in r["evidence"]})
-    lines = [email_body(c["first_name"], d), "-" * 40, "DRAFT ONLY. Nothing was sent to this person.",
+    edited = (r.get("review") or {}).get("edited")  # what the operator changed it to, when he did
+    lines = [edited["body"] if edited else email_body(c["first_name"], d), "-" * 40, "DRAFT ONLY. Nothing was sent to this person.",
              "Would go to: %s, %s <%s> (Hunter confidence %s, %s)" % (c["name"], c["position"], c["email"],
                                                                      c["confidence"], c["verification_status"]),
              "", "Why this company: %s" % r["reason"], "Pages used: %s" % ", ".join(sources),
@@ -344,7 +348,7 @@ def inbox_email(record):
 
 # ---------- one company ----------
 
-def run_company(domain, run_id, writer=SONNET, send=True):
+def run_company(domain, run_id, writer=SONNET, send=True, apply_corrections=True):
     run_dir = DATA / "runs" / run_id
     run_dir.mkdir(parents=True, exist_ok=True)
     path = run_dir / ("%s.json" % domain)
@@ -395,7 +399,11 @@ def run_company(domain, run_id, writer=SONNET, send=True):
             "contact": {"first_name": contact["first_name"], "position": contact["position"],
                         "why_this_person": contact["why_this_person"]}}
     try:
-        draft = write_draft(pack, writer)
+        found = feedback.retrieve(contact["role_tier"], fields["funding_round"] if fields["funding_round"] != "unknown"
+                                  else None) if apply_corrections else {"rows": [], "pattern": "", "error": "paused"}
+        record["feedback_loop"] = {"corrections_used": [r["id"] for r in found["rows"]], "pattern": found["pattern"],
+                                   "off_because": found["error"]}
+        draft = write_draft(pack, writer, feedback.prompt_section(found))
     except ClaudeError as e:
         return done("flagged", str(e), rule_applied=rule)
     draft["model"] = writer

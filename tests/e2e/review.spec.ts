@@ -3,6 +3,9 @@ import { guardDialogs, hasHorizontalOverflow, tabUntil } from "./helpers";
 import { READY, FLAGGED, BLOCKED, DROPPED, run } from "./fixtures";
 
 // Every API is stubbed: /api/action would send real email, /api/quota calls Hunter.
+let loopState: object = { ok: true, stored: 3, drafts_counted: 4, avg_disagreement: 0.25 };
+test.beforeEach(() => { loopState = { ok: true, stored: 3, drafts_counted: 4, avg_disagreement: 0.25 }; });
+
 async function open(page: Page, payload: object | object[] = run([FLAGGED, BLOCKED, READY, DROPPED])) {
   guardDialogs(page);
   const responses = Array.isArray(payload) ? payload : [payload];
@@ -11,14 +14,19 @@ async function open(page: Page, payload: object | object[] = run([FLAGGED, BLOCK
     r.fulfill({ contentType: "application/json", body: JSON.stringify(responses[Math.min(n++, responses.length - 1)]) }));
   await page.route("**/api/quota", (r) =>
     r.fulfill({ contentType: "application/json", body: JSON.stringify({ ok: true, searches_left: 43, searches_total: 50 }) }));
+  await page.route("**/api/feedback", (r) =>
+    r.fulfill({ contentType: "application/json", body: JSON.stringify(loopState) }));
   await page.goto("/review.html");
 }
 
+const bodies: any[] = [];
 function stubAction(page: Page, reply: (action: string) => { status: number; body: object }, delayMs = 0) {
   const calls: string[] = [];
+  bodies.length = 0;
   return page.route("**/api/action", async (route) => {
     const { action } = route.request().postDataJSON();
     calls.push(action);
+    bodies.push(route.request().postDataJSON());
     if (delayMs) await new Promise((r) => setTimeout(r, delayMs));
     const { status, body } = reply(action);
     await route.fulfill({ status, contentType: "application/json", body: JSON.stringify(body) });
@@ -65,7 +73,8 @@ test("a ready draft leads with the email and keeps the reasoning under it", asyn
   await open(page);
   await item(page, "Kestrel Metrics").click();
   const d = detail(page);
-  await expect(d.getByText("Frankfurt region and security reviews")).toBeVisible();
+  await expect(d.getByLabel("Subject")).toHaveValue("Frankfurt region and security reviews");
+  await expect(d.getByLabel("Email", { exact: true })).toHaveValue(/^Hi Ines,/);
   await expect(d.getByText("Ines Albrecht, Head of Security")).toBeVisible();
   const order = await d.evaluate((el) => {
     const draft = el.querySelector(".draft")!, reasons = el.querySelector(".reasons")!;
@@ -141,7 +150,10 @@ test("keyboard only: move to a company and open it", async ({ page }) => {
   await open(page);
   expect(await tabUntil(page, 'li[data-domain="kestrelmetrics.io"] .item')).toBe(true);
   await page.keyboard.press("Enter");
-  await expect(detail(page).getByText("Frankfurt region and security reviews")).toBeVisible();
+  await expect(detail(page).getByLabel("Subject")).toHaveValue("Frankfurt region and security reviews");
+  expect(await tabUntil(page, "#ed-subject")).toBe(true);
+  expect(await tabUntil(page, "#ed-body")).toBe(true);
+  expect(await tabUntil(page, "#ed-reason")).toBe(true);
   expect(await tabUntil(page, '[data-act="send"]')).toBe(true);
 });
 
@@ -152,4 +164,99 @@ test("layout: no sideways scroll; on a phone the selected card opens in place", 
   const inCard = await page.locator('li[data-domain="kestrelmetrics.io"] #detail').count();
   expect(inCard).toBe(info.project.name === "chrome-375" ? 1 : 0);
   await expect(detail(page).getByRole("button", { name: "Send to my inbox" })).toBeVisible();
+});
+
+// ---------- Phase 4: the feedback loop ----------
+
+const REWRITTEN = { ...READY, status: "Rewritten", review: { status: "Rewritten", rewritten: true, sent_at: "2026-11-12T08:00:00+00:00",
+  disagreement: 0.21, changed_parts: ["ask"], correction: { saved: true, id: 12, note: null },
+  edited: { subject: READY.draft.subject, body: READY.draft.body.replace("Is ISO 27001 already on your plan for next year?", "Worth a one-line reply?") } } };
+
+test("an edited draft is sent as edited, with the reason, and becomes Rewritten", async ({ page }) => {
+  await open(page);
+  const calls = await stubAction(page, () => ({ status: 200, body: { record: REWRITTEN } }), 500);
+  await item(page, "Kestrel Metrics").click();
+  const d = detail(page);
+  const body = d.getByLabel("Email", { exact: true });
+  await body.fill((await body.inputValue()).replace("Is ISO 27001 already on your plan for next year?", "Worth a one-line reply?"));
+  await d.getByLabel("Why did you change it? (optional)").fill("Softer ask");
+  const send = d.getByRole("button", { name: "Send to my inbox" });
+  await send.click();
+  await send.click({ force: true });
+  await expect(item(page, "Kestrel Metrics").locator(".chip")).toHaveText("Rewritten");
+  expect(calls).toEqual(["send"]);
+  expect(bodies[0].body).toContain("Worth a one-line reply?");
+  expect(bodies[0].reason).toBe("Softer ask");
+  expect(bodies[0].subject).toBe("Frankfurt region and security reviews");
+  await expect(d.getByText(/You changed: ask\. Saved to the feedback loop\./)).toBeVisible();
+  await expect(d.getByLabel("Email", { exact: true })).toHaveValue(/Worth a one-line reply\?/); // what was sent stays on screen
+  await expect(d.getByLabel("Email", { exact: true })).not.toBeEditable();
+});
+
+test("an empty subject or email is refused before anything is sent", async ({ page }) => {
+  await open(page);
+  const calls = await stubAction(page, () => ({ status: 200, body: { record: REWRITTEN } }));
+  await item(page, "Kestrel Metrics").click();
+  const d = detail(page);
+  await d.getByLabel("Email", { exact: true }).fill("   ");
+  await d.getByRole("button", { name: "Send to my inbox" }).click();
+  await expect(d.getByRole("alert")).toHaveText("The email needs a subject and a body.");
+  await expect(d.getByLabel("Email", { exact: true })).toBeFocused();
+  await d.getByLabel("Email", { exact: true }).fill("Hi Ines,\n\nShort note.");
+  await d.getByLabel("Subject").fill("");
+  await d.getByRole("button", { name: "Send to my inbox" }).click();
+  await expect(d.getByLabel("Subject")).toBeFocused();
+  expect(calls).toEqual([]);
+});
+
+test("very long edits are capped in the fields and never overflow the page", async ({ page }) => {
+  await open(page);
+  await item(page, "Kestrel Metrics").click();
+  const d = detail(page);
+  await d.getByLabel("Subject").fill("s".repeat(400));
+  await d.getByLabel("Email", { exact: true }).fill("b".repeat(6000));
+  await d.getByLabel("Why did you change it? (optional)").fill("r".repeat(500));
+  expect((await d.getByLabel("Subject").inputValue()).length).toBe(200);
+  expect((await d.getByLabel("Email", { exact: true }).inputValue()).length).toBe(5000);
+  expect((await d.getByLabel("Why did you change it? (optional)").inputValue()).length).toBe(300);
+  expect(await hasHorizontalOverflow(page)).toBe(false);
+});
+
+test("a save that fails still sends, and says the correction was not stored", async ({ page }) => {
+  await open(page);
+  await stubAction(page, () => ({ status: 200, body: { record: { ...REWRITTEN, review: { ...REWRITTEN.review,
+    correction: { saved: false, id: null, note: "the feedback database could not be reached (TimeoutError)" } } } } }));
+  await item(page, "Kestrel Metrics").click();
+  await detail(page).getByLabel("Subject").fill("Frankfurt and ISO 27001");
+  await detail(page).getByRole("button", { name: "Send to my inbox" }).click();
+  await expect(detail(page).getByText(/Not saved to the feedback loop: the feedback database could not be reached/)).toBeVisible();
+  await expect(item(page, "Kestrel Metrics").locator(".chip")).toHaveText("Rewritten");
+});
+
+test("Skip sends the reason along as a rejection", async ({ page }) => {
+  await open(page);
+  await stubAction(page, () => ({ status: 200, body: { record: { ...READY, review: { status: "Qualified", skipped: true, disagreement: 1 } } } }));
+  await item(page, "Kestrel Metrics").click();
+  await detail(page).getByLabel("Why did you change it? (optional)").fill("Wrong person");
+  await detail(page).getByRole("button", { name: "Skip" }).click();
+  expect(bodies[0]).toMatchObject({ action: "skip", reason: "Wrong person" });
+  expect(bodies[0].body).toBeUndefined();
+});
+
+test("header shows average disagreement, and says when the loop is off", async ({ page }) => {
+  await open(page);
+  await expect(page.locator("#c-disagree")).toHaveText("25%");
+  await expect(page.getByText("last 4 drafts")).toBeVisible();
+  await expect(page.locator("#loop-off")).toBeHidden();
+  loopState = { ok: false, detail: "The feedback loop is off: the feedback database could not be reached (TimeoutError). Runs and sends still work.", drafts_counted: 0, avg_disagreement: null };
+  await page.reload();
+  await expect(page.getByRole("status")).toHaveText(/The feedback loop is off: .* Runs and sends still work\./);
+  await expect(page.locator("#c-disagree")).toHaveText("-");
+});
+
+test("a draft written with earlier corrections says so, and a paused loop is explained", async ({ page }) => {
+  const learned = { ...READY, feedback_loop: { corrections_used: [3, 9], pattern: "He rewrote the ask in 2 of his last 3 edits.", off_because: null } };
+  await open(page, run([learned], { corrections_paused: true }));
+  await expect(detail(page).getByText("Written with 2 of your earlier corrections in mind. He rewrote the ask in 2 of his last 3 edits.")).toBeVisible();
+  await expect(page.getByText(/Your corrections were not applied to this run/)).toBeVisible();
 });

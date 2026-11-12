@@ -31,8 +31,11 @@ class Actions(unittest.TestCase):
         (d / "fernpay.com.json").write_text(json.dumps({"domain": "fernpay.com", "verdict": "disqualified", "reason": "SOC 2"}))
         self.sent = []
         runs.send_to_operator = lambda subject, body: self.sent.append((subject, body))
+        self._store = runs.feedback.store
+        runs.feedback.store = lambda row: (1, None)  # never touch the real database from tests
 
     def tearDown(self):
+        runs.feedback.store = self._store
         self.tmp.cleanup()
 
     def test_send_twice_emails_once(self):

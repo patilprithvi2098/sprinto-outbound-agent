@@ -103,6 +103,17 @@ main.wide { max-width: 1280px; }
 .subject { margin-top: var(--s2); font-weight: 600; font-size: 17px; }
 .body { margin-top: var(--s4); font-size: 17px; line-height: 1.6; white-space: pre-wrap; max-width: 62ch; overflow-wrap: anywhere; }
 .actions { margin-top: var(--s4); }
+.field { display: block; width: 100%; padding: var(--s2) var(--s3); color: var(--text); background: var(--surface-2);
+  border: 1px solid var(--border); border-radius: var(--radius); font: 15px/1.5 var(--font); }
+.field[readonly] { background: transparent; }
+.draft label.label { display: block; margin: var(--s4) 0 var(--s1); font-weight: 400; }
+.subject-field { font-weight: 600; font-size: 17px; }
+textarea.body-field { font: 17px/1.6 var(--font); min-height: 320px; max-width: 62ch; }
+.field::placeholder { color: var(--text-muted); opacity: 1; }
+.draft .hint { margin-top: var(--s2); }
+.counts .hint { font-size: 12px; font-weight: 400; }
+.notice { background: var(--warning-bg); color: var(--warning); border-radius: var(--radius); padding: var(--s3); margin-bottom: var(--s5); font-weight: 600; }
+.notice[hidden] { display: none; }
 #act-note { margin-top: var(--s2); }
 .error[hidden] { display: none; }
 .reasons { max-width: 62ch; font-size: 14px; }
