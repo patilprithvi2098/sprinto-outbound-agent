@@ -20,10 +20,33 @@ def load_env():
             os.environ[key.strip()] = value.strip().strip("\"'")
 
 
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, *args):  # calls that carry an API key must not follow a redirect to another host
+        return None
+
+
 def get_json(url, headers=None, timeout=10):
     request = urllib.request.Request(url, headers=dict(_UA, **(headers or {})))
-    with urllib.request.urlopen(request, timeout=timeout) as response:
+    with urllib.request.build_opener(_NoRedirect).open(request, timeout=timeout) as response:
         return json.load(response)
+
+
+class _PlainText:
+    """Terminal output filter: text from websites, Hunter or the model could hide control codes; drop them."""
+
+    def __init__(self, stream):
+        self.stream = stream
+
+    def write(self, text):
+        return self.stream.write("".join(c for c in text if c in "\n\t" or (c.isprintable() and not 0x80 <= ord(c) < 0xA0)))
+
+    def flush(self):
+        self.stream.flush()
+
+
+def plain_terminal():
+    import sys
+    sys.stdout = _PlainText(sys.stdout)
 
 
 def _result(ok, detail, **extra):

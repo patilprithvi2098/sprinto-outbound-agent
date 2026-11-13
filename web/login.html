@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sign in · Sprinto outbound</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Familjen+Grotesk:wght@400;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<header class="site">
+  <span class="brand">Sprinto outbound</span>
+</header>
+<main>
+  <div class="signin">
+    <h1>Sign in</h1>
+    <p class="muted">This app spends paid research credits and shows contact details, so it asks for the app password.</p>
+    <form id="login-form" class="stack" novalidate>
+      <div>
+        <label for="password">App password</label>
+      </div>
+      <input id="password" class="field" type="password" autocomplete="current-password" required maxlength="200">
+      <p class="error" id="login-error" role="alert" hidden></p>
+      <div class="row"><button class="btn primary" type="submit" id="login-btn">Sign in</button></div>
+    </form>
+  </div>
+</main>
+<script>
+(() => {
+  const form = document.getElementById("login-form"), box = document.getElementById("password"),
+    err = document.getElementById("login-error"), btn = document.getElementById("login-btn");
+  const next = new URLSearchParams(location.search).get("next");
+  const target = /^(index|review)\.html$/.test(next || "") ? next : "index.html"; // only our own pages, never an outside URL
+  box.focus();
+  form.addEventListener("submit", async e => {
+    e.preventDefault();
+    if (btn.disabled) return;
+    if (!box.value) { err.textContent = "Enter the app password."; err.hidden = false; box.focus(); return; }
+    btn.disabled = true; err.hidden = true;
+    try {
+      const res = await fetch("/api/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ password: box.value }) });
+      if (res.ok) { location.href = target; return; }
+      const data = await res.json();
+      err.textContent = data.error || "Sign-in failed.";
+    } catch (x) {
+      err.textContent = "The app is not responding. Try again in a moment.";
+    }
+    err.hidden = false; btn.disabled = false; box.select();
+  });
+})();
+</script>
+</body>
+</html>

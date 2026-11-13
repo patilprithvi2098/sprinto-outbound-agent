@@ -10,6 +10,7 @@ import checks  # noqa: E402
 import feedback  # noqa: E402
 import pipeline  # noqa: E402
 import runs  # noqa: E402
+import store  # noqa: E402
 from test_phase3 import READY, RID  # noqa: E402
 
 DRAFT = {"subject": "Frankfurt region and security reviews", "hook": "Kestrel opened a Frankfurt region.",
@@ -82,12 +83,11 @@ class Apply(unittest.TestCase):
 class Capture(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
-        runs.RUNS = Path(self.tmp.name)
-        d = runs.RUNS / RID
-        d.mkdir()
-        (d / "run.json").write_text(json.dumps({"id": RID, "started_at": "t", "finished_at": "t",
-                                                "domains": ["kestrelmetrics.io"]}))
-        (d / "kestrelmetrics.io.json").write_text(json.dumps(dict(READY, draft=dict(READY["draft"], **DRAFT))))
+        self._real_store = store.STORE
+        store.STORE = store.FileStore(self.tmp.name)
+        store.STORE.put("run", RID, {"id": RID, "started_at": "t", "finished_at": "t", "halt": {}, "attempts": {},
+                                     "corrections_paused": False, "domains": ["kestrelmetrics.io"]})
+        store.STORE.put("record", RID + "/kestrelmetrics.io", dict(READY, draft=dict(READY["draft"], **DRAFT)))
         self.sent, self.rows = [], []
         runs.send_to_operator = lambda subject, body: self.sent.append((subject, body))
         self._store = feedback.store
@@ -95,6 +95,7 @@ class Capture(unittest.TestCase):
 
     def tearDown(self):
         feedback.store = self._store
+        store.STORE = self._real_store
         self.tmp.cleanup()
 
     def act(self, action, **edits):
@@ -159,6 +160,25 @@ class Neon(unittest.TestCase):
             conn.rollback()  # nothing is left behind
             conn.close()
         self.assertTrue(feedback.status()["ok"])
+
+
+@unittest.skipUnless(os.environ.get("NEON_CHECK"), "set NEON_CHECK=1 to run against the real database (cleans up)")
+class NeonStore(unittest.TestCase):
+    def test_put_get_claim_release(self):
+        import store
+        checks.load_env()
+        s = store.PgStore()
+        key = "selftest/%d" % os.getpid()
+        try:
+            s.put("cache", key, {"saved": 1, "text": "<b>hi</b>"})
+            self.assertEqual(s.get("cache", key), {"saved": 1, "text": "<b>hi</b>"})
+            self.assertTrue(s.claim("selftest:" + key))
+            self.assertFalse(s.claim("selftest:" + key))
+            s.release("selftest:" + key)
+            self.assertTrue(s.claim("selftest:" + key, ttl=300))
+        finally:
+            s._run("DELETE FROM kv WHERE kind = 'cache' AND key = %s", (key,))
+            s.release("selftest:" + key)
 
 
 if __name__ == "__main__":

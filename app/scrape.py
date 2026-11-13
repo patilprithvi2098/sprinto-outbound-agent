@@ -1,9 +1,6 @@
 """Fetch one public page and reduce it to readable text."""
 import ipaddress
-import os
 import socket
-import subprocess
-import tempfile
 import time
 import urllib.error
 import urllib.request
@@ -19,26 +16,6 @@ _SKIP = {"script", "style", "noscript", "svg", "template", "iframe", "nav"}
 
 
 ATTEMPTS, RETRY_WAIT = 3, 1.0
-CHROME = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
-
-
-def render(url):
-    """The page as headless Chrome sees it, in a throwaway profile. Returns "" if Chrome is missing or fails.
-    shortcut: Chrome's own redirects are not re-checked against private addresses, pin the resolved IP if this ever runs beyond one trusted user"""
-    if not os.path.exists(CHROME):
-        return ""
-    with tempfile.TemporaryDirectory() as profile:
-        try:
-            out = subprocess.run([CHROME, "--headless=new", "--disable-gpu", "--no-first-run", "--mute-audio",
-                                  "--user-data-dir=" + profile, "--user-agent=" + USER_AGENT,
-                                  "--virtual-time-budget=8000", "--dump-dom", url],
-                                 capture_output=True, timeout=45,
-                                 env={"PATH": "/usr/bin:/bin", "HOME": profile})  # the site's page runs here: no keys in its environment
-            return out.stdout.decode("utf-8", errors="replace")[:MAX_BYTES]
-        except Exception:
-            return ""
-
-
 class Blocked(Exception):
     pass
 
@@ -56,6 +33,8 @@ def assert_public(host):
 
 class _RedirectGuard(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, req, fp, code, msg, headers, newurl):
+        if urlparse(newurl).scheme != "https":
+            raise Blocked("The site redirected away from HTTPS.")
         assert_public(urlparse(newurl).hostname or "")
         return super().redirect_request(req, fp, 307 if code == 308 else code, msg, headers, newurl)
 
@@ -137,10 +116,7 @@ def fetch(url):
 
     text = clean(raw.decode(charset, errors="replace"))
     words = len(text.split())
-    if words < THIN_PAGE_WORDS:  # built by JavaScript: try a real browser once
-        text = clean(render(url))
-        words = len(text.split())
-        if words < THIN_PAGE_WORDS:
-            return {"ok": False, "reason": "site needs a browser: the page arrived nearly empty (%d words) even "
-                    "in headless Chrome" % words, "text": text, "words": words}
+    if words < THIN_PAGE_WORDS:  # built by JavaScript; this app deliberately runs no browser (decision, Phase 6)
+        return {"ok": False, "reason": "site needs a browser: the page arrived nearly empty (%d words)" % words,
+                "text": text, "words": words}
     return {"ok": True, "reason": "", "text": text, "words": words}

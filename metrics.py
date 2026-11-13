@@ -81,6 +81,9 @@ def report(data=DATA, now=None, days=7):
 
 
 def main(args):
+    sys.path.insert(0, str(Path(__file__).resolve().parent / "app"))
+    import checks
+    checks.plain_terminal()
     if args and args[0] in VERDICTS:
         if len(args) != 2:
             sys.exit("%s needs one domain." % args[0])

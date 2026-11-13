@@ -21,3 +21,9 @@ CREATE TABLE corrections (
   changed_parts text[] NOT NULL DEFAULT '{}'  -- which parts he changed: subject, hook, pain, value, ask (added 2026-11-12)
 );
 CREATE INDEX corrections_lookup ON corrections (operator, role_tier, created_at DESC);
+
+-- Runs, records and the page/Hunter cache when deployed on Vercel (its disk does not persist).
+CREATE TABLE IF NOT EXISTS kv (kind text NOT NULL, key text NOT NULL, value jsonb NOT NULL,
+  updated_at timestamptz NOT NULL DEFAULT now(), PRIMARY KEY (kind, key));
+-- One-time claims: a draft is sent once, a company is researched once even with two tabs open.
+CREATE TABLE IF NOT EXISTS claims (name text PRIMARY KEY, created_at timestamptz NOT NULL DEFAULT now());

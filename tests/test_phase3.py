@@ -6,6 +6,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "app"))
 import runs  # noqa: E402
+import store  # noqa: E402
 
 RID = "20261112-140000"
 READY = {"domain": "kestrelmetrics.io", "name": "Kestrel Metrics", "verdict": "qualified", "reason": "fits",
@@ -22,13 +23,12 @@ READY = {"domain": "kestrelmetrics.io", "name": "Kestrel Metrics", "verdict": "q
 class Actions(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
-        runs.RUNS = Path(self.tmp.name)
-        d = runs.RUNS / RID
-        d.mkdir()
-        (d / "run.json").write_text(json.dumps({"id": RID, "started_at": "t", "finished_at": "t",
-                                                "domains": ["kestrelmetrics.io", "fernpay.com"]}))
-        (d / "kestrelmetrics.io.json").write_text(json.dumps(READY))
-        (d / "fernpay.com.json").write_text(json.dumps({"domain": "fernpay.com", "verdict": "disqualified", "reason": "SOC 2"}))
+        self._real_store = store.STORE
+        store.STORE = store.FileStore(self.tmp.name)  # never the real data/ folder or Neon
+        store.STORE.put("run", RID, {"id": RID, "started_at": "t", "finished_at": "t", "halt": {}, "attempts": {},
+                                     "corrections_paused": False, "domains": ["kestrelmetrics.io", "fernpay.com"]})
+        store.STORE.put("record", RID + "/kestrelmetrics.io", READY)
+        store.STORE.put("record", RID + "/fernpay.com", {"domain": "fernpay.com", "verdict": "disqualified", "reason": "SOC 2"})
         self.sent = []
         runs.send_to_operator = lambda subject, body: self.sent.append((subject, body))
         self._store = runs.feedback.store
@@ -36,6 +36,7 @@ class Actions(unittest.TestCase):
 
     def tearDown(self):
         runs.feedback.store = self._store
+        store.STORE = self._real_store
         self.tmp.cleanup()
 
     def test_send_twice_emails_once(self):
@@ -69,12 +70,47 @@ class Actions(unittest.TestCase):
         self.assertEqual(runs.act(RID, "kestrelmetrics.io", "send")[0]["status"], "Sent to me")
 
     def test_state_marks_unfinished_companies(self):
-        meta = json.loads((runs.RUNS / RID / "run.json").read_text())
+        meta = store.STORE.get("run", RID)
         meta.update(domains=meta["domains"] + ["tallybook.co"], finished_at=None)
-        (runs.RUNS / RID / "run.json").write_text(json.dumps(meta))
+        store.STORE.put("run", RID, meta)
         s = runs.state(RID)
         self.assertEqual([r["status"] for r in s["records"]], ["Qualified", "Disqualified", "Researching"])
-        self.assertTrue(s["interrupted"])  # no thread is running it
+        self.assertIsNone(s["finished_at"])
+
+    def test_step_researches_one_company_per_call_then_finishes(self):
+        meta = store.STORE.get("run", RID)
+        meta.update(domains=meta["domains"] + ["tallybook.co", "orbitly.app"], finished_at=None)
+        store.STORE.put("run", RID, meta)
+        done = []
+
+        def fake(domain, run_id, **kw):
+            done.append(domain)
+            kw["halt"]["spent"] = kw["halt"].get("spent", 0) + 0.01
+            store.STORE.put("record", "%s/%s" % (run_id, domain), {"domain": domain, "verdict": "disqualified", "reason": "x"})
+        real = runs.pipeline.run_company
+        runs.pipeline.run_company = fake
+        self.addCleanup(setattr, runs.pipeline, "run_company", real)
+        s, _ = runs.step(RID)
+        self.assertEqual((done, s["finished_at"]), (["tallybook.co"], None))
+        s, _ = runs.step(RID)
+        self.assertEqual(done, ["tallybook.co", "orbitly.app"])
+        self.assertIsNotNone(s["finished_at"])
+        self.assertEqual(store.STORE.get("run", RID)["halt"]["spent"], 0.02)  # spend carries across requests
+
+    def test_a_company_claimed_by_another_request_is_not_researched_twice(self):
+        meta = store.STORE.get("run", RID)
+        meta.update(domains=meta["domains"] + ["tallybook.co"], finished_at=None)
+        store.STORE.put("run", RID, meta)
+        self.assertTrue(store.STORE.claim("step:%s:tallybook.co" % RID, ttl=runs.STEP_TTL))
+        real = runs.pipeline.run_company
+        runs.pipeline.run_company = lambda *a, **k: self.fail("researched twice")
+        self.addCleanup(setattr, runs.pipeline, "run_company", real)
+        self.assertEqual(runs.step(RID)[0]["records"][-1]["status"], "Researching")
+
+    def test_a_send_claim_blocks_a_second_instance(self):
+        self.assertTrue(store.STORE.claim("send:%s/kestrelmetrics.io" % RID))
+        r, err = runs.act(RID, "kestrelmetrics.io", "send")
+        self.assertEqual((err[0], self.sent), (409, []))
 
 
 if __name__ == "__main__":

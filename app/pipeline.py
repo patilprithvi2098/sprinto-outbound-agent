@@ -11,6 +11,7 @@ from pathlib import Path
 import checks
 import claude
 import feedback
+import store
 from claude import HAIKU, SONNET, ClaudeError, ask_json
 from mailer import send_to_operator
 from scrape import fetch
@@ -21,6 +22,7 @@ CONFIG = json.loads((ROOT / "config" / "icp.json").read_text())
 PAGE_CHARS = 8000  # about 2,000 tokens of cleaned text per page
 CACHE_DAYS = 7
 FETCH_DELAY = 1.5  # seconds between live requests to the same site
+MIN_QUOTE = 10  # characters after normalising: "soc 2" alone would match almost any security page
 FIELDS = ("certified", "b2b_saas", "stage", "trigger")
 LABELS = ["FROM PACK", "GENERIC", "MADE UP", "BANNED"]
 _YNU = {"type": "string", "enum": ["yes", "no", "unknown"]}
@@ -62,6 +64,11 @@ def _norm(text):
     return " ".join(re.sub(r"[^a-z0-9]+", " ", (text or "").lower()).split())
 
 
+def data(text):
+    """Untrusted text placed inside our <tags>: it cannot close a tag and pose as another block."""
+    return text.replace("<", "\u2039").replace(">", "\u203a")
+
+
 def _known(value):
     return bool(value) and value.strip().lower() != "unknown"
 
@@ -74,25 +81,25 @@ def _filled(fields, name):
 
 def get_page(domain, path):
     """One page, cleaned, reused for 7 days. Never raises."""
-    slug = path.strip("/").replace("/", "_") or "home"
-    cache = DATA / "cache" / domain / ("%s.txt" % slug)
-    if cache.exists() and time.time() - cache.stat().st_mtime < CACHE_DAYS * 86400:
-        return {"ok": True, "reason": "", "text": cache.read_text(), "cached": True}
+    key = "%s/%s" % (domain, path.strip("/").replace("/", "_") or "home")
+    cached = store.STORE.get("cache", key)
+    if cached and time.time() - cached["saved"] < CACHE_DAYS * 86400:
+        return {"ok": True, "reason": "", "text": cached["text"], "cached": True}
     if path != "/":
         time.sleep(FETCH_DELAY)
     page = fetch("https://%s%s" % (domain, path))
     if page["ok"]:
-        cache.parent.mkdir(parents=True, exist_ok=True)
-        cache.write_text(page["text"])
+        store.STORE.put("cache", key, {"saved": time.time(), "text": page["text"]})
     return dict(page, cached=False)
 
 
 def extract(page_text, url):
-    fields = ask_json(HAIKU, _prompt("extract"), "URL: %s\n<page>\n%s\n</page>" % (url, page_text[:PAGE_CHARS]),
+    fields = ask_json(HAIKU, _prompt("extract"), "URL: %s\n<page>\n%s\n</page>" % (url, data(page_text[:PAGE_CHARS])),
                       EXTRACT_SCHEMA, effort="medium")  # low effort missed audit wording (retool.com, Phase 6)
     page = _norm(page_text)
     for name in FIELDS + ("funding_round", "team_size", "enterprise_signal"):
-        if _norm(fields[name + "_quote"]) not in page:  # a paraphrase is not evidence
+        quote = _norm(fields[name + "_quote"])
+        if quote not in page or len(quote) < MIN_QUOTE:  # a paraphrase, or two common words, is not evidence
             fields[name + "_quote"] = ""
     for name in FIELDS:  # a fact without its quote does not count
         if _filled(fields, name) and not fields[name + "_quote"].strip():
@@ -249,9 +256,9 @@ HUNTER_ATTEMPTS, HUNTER_WAIT = 3, 2.0
 
 def hunter_people(domain):
     """One Hunter search per domain, reused for 7 days so a re-run never spends twice."""
-    cache = DATA / "cache" / domain / "hunter.json"
-    if cache.exists() and time.time() - cache.stat().st_mtime < CACHE_DAYS * 86400:
-        return json.loads(cache.read_text()), False
+    cached = store.STORE.get("cache", domain + "/hunter")
+    if cached and time.time() - cached["saved"] < CACHE_DAYS * 86400:
+        return cached["people"], False
     quota = checks.check_hunter()
     if not quota["ok"]:
         if "rejected the key" in quota["detail"]:
@@ -276,18 +283,22 @@ def hunter_people(domain):
             if attempt == HUNTER_ATTEMPTS:
                 raise RuntimeError("Hunter did not answer on %d tries (%s)." % (HUNTER_ATTEMPTS, type(e).__name__))
             time.sleep(HUNTER_WAIT * attempt)
-    cache.parent.mkdir(parents=True, exist_ok=True)
-    cache.write_text(json.dumps(people))
+    store.STORE.put("cache", domain + "/hunter", {"saved": time.time(), "people": people})
     return people, True
 
 
 # ---------- writing and grading ----------
 
 def write_draft(pack, model, corrections=""):
-    user = "<pack>\n%s\n</pack>" % json.dumps(pack, indent=1)
+    user = "<pack>\n%s\n</pack>" % data(json.dumps(pack, indent=1))
     if corrections:  # the operator's own past edits, passed as data after the pack
         user += "\n" + corrections
     return ask_json(model, _prompt("write"), user, WRITE_SCHEMA, effort="high")
+
+
+def subject_line(subject, company):
+    """One line: a line break in a scraped company name would make Gmail refuse the whole message."""
+    return " ".join(("[Draft] %s | %s" % (subject, company)).split())
 
 
 def email_body(first_name, d):
@@ -336,9 +347,9 @@ def check_draft(d, labels):
 
 def grade(d, pack, style=()):
     numbered = "\n".join("%d. %s" % (n, s) for n, s in enumerate(split_sentences(d), 1))
-    user = "<pack>\n%s\n</pack>\n<sentences>\n%s\n</sentences>" % (json.dumps(pack, indent=1), numbered)
+    user = "<pack>\n%s\n</pack>\n<sentences>\n%s\n</sentences>" % (data(json.dumps(pack, indent=1)), data(numbered))
     if style:  # the operator's own rewrites: allowed phrasing, never facts
-        user += "\n<operator_style>\n%s\n</operator_style>" % "\n---\n".join(style)
+        user += "\n<operator_style>\n%s\n</operator_style>" % data("\n---\n".join(style))
     result = ask_json(HAIKU, _prompt("grade"), user, GRADE_SCHEMA, effort="medium")
     return check_draft(d, {x["n"]: x for x in result["labels"]})
 
@@ -372,23 +383,21 @@ def inbox_email(record):
 # ---------- one company ----------
 
 def run_company(domain, run_id, writer=SONNET, send=True, apply_corrections=True, halt=None):
-    """`halt` is one dict shared by every company in a run: it carries the Hunter stop and the cost so far."""
+    """`halt` is one dict per run, saved with the run between requests: the Hunter stop and the Claude spend so far."""
     halt = {} if halt is None else halt
     cost_at_start = claude.spent["usd"]
-    run_cost_start = halt.setdefault("cost_start", cost_at_start)
-    run_dir = DATA / "runs" / run_id
-    run_dir.mkdir(parents=True, exist_ok=True)
-    path = run_dir / ("%s.json" % domain)
+    key = "%s/%s" % (run_id, domain)
     record = {"domain": domain, "run_id": run_id, "started_at": datetime.now(timezone.utc).isoformat(),
-              "flags": [], "record_path": str(path.relative_to(ROOT))}
+              "flags": [], "record_path": "runs/%s.json" % key}
 
     def done(verdict, reason, **extra):
-        record.update(verdict=verdict, reason=reason, claude_cost_usd=round(claude.spent["usd"] - cost_at_start, 4),
-                      **extra)
-        path.write_text(json.dumps(record, indent=2))
+        cost = round(claude.spent["usd"] - cost_at_start, 4)
+        record.update(verdict=verdict, reason=reason, claude_cost_usd=cost, **extra)
+        halt["spent"] = round(halt.get("spent", 0) + cost, 4)
+        store.STORE.put("record", key, record)
         return record
 
-    if cost_at_start - run_cost_start >= CONFIG["max_run_cost_usd"]:
+    if halt.get("spent", 0) >= CONFIG["max_run_cost_usd"]:
         return done("flagged", "Not researched: this run reached its Claude cost cap of $%.2f."
                     % CONFIG["max_run_cost_usd"], rule_applied="cost cap")
     try:
@@ -457,7 +466,7 @@ def run_company(domain, run_id, writer=SONNET, send=True, apply_corrections=True
         return done("flagged", "Draft held back: %s." % "; ".join(problems))
     if send:
         try:
-            send_to_operator("[Draft] %s | %s" % (draft["subject"], fields["company_name"]), inbox_email(record))
+            send_to_operator(subject_line(draft["subject"], fields["company_name"]), inbox_email(record))
             record["review"] = {"status": "Sent to me", "sent_at": datetime.now(timezone.utc).isoformat()}
         except Exception as e:
             record["review"] = {"status": "Qualified", "send_error": "Gmail send failed (%s)." % type(e).__name__}

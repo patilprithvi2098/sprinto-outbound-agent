@@ -1,21 +1,27 @@
-"""Runs started from the app: one at a time, in a background thread, state kept in data/runs/<id>/."""
-import json
+"""Runs started from the app. No background thread: Vercel stops work once a response is sent, so the
+Review screen asks for one company at a time (step) until the run is done. State lives in store.STORE."""
 import re
+import secrets
 import threading
 from datetime import datetime, timezone
 
 import feedback
 import pipeline
+import store
 from mailer import send_to_operator
 
-RUNS = pipeline.DATA / "runs"
-RUN_ID = re.compile(r"^\d{8}-\d{6}$")
-_lock = threading.Lock()
-_active = {"thread": None}
+RUN_ID = re.compile(r"^\d{8}-\d{6}(-[0-9a-f]{4})?$")  # the suffix keeps two runs started in the same second apart
+STEP_TTL = 330  # seconds: past Vercel's 300 s limit, so a company whose step died can be picked up again
+MAX_ATTEMPTS = 2
+_lock = threading.Lock()  # local server: one action at a time inside this process; claims cover other processes
 
 
 def _now():
     return datetime.now(timezone.utc).isoformat()
+
+
+def new_run_id():
+    return "%s-%s" % (datetime.now().strftime("%Y%m%d-%H%M%S"), secrets.token_hex(2))
 
 
 def status_of(r):
@@ -26,33 +32,47 @@ def status_of(r):
 
 
 def start(domains):
-    """Returns (run_id, None) or (None, error message)."""
-    with _lock:
-        if _active["thread"] and _active["thread"].is_alive():
-            return None, "A run is already going. Wait for it to finish."
-        run_id = datetime.now().strftime("%Y%m%d-%H%M%S")
-        run_dir = RUNS / run_id
-        run_dir.mkdir(parents=True, exist_ok=True)
-        paused = _mostly_rejected(latest())  # kill rule against a loop that is making drafts worse
-        meta = {"id": run_id, "started_at": _now(), "finished_at": None, "domains": domains,
-                "corrections_paused": paused}
-        (run_dir / "run.json").write_text(json.dumps(meta, indent=2))
+    """Returns (run_id, None). Research happens in step()."""
+    run_id = new_run_id()
+    paused = _mostly_rejected(latest())  # kill rule against a loop that is making drafts worse
+    store.STORE.put("run", run_id, {"id": run_id, "started_at": _now(), "finished_at": None, "domains": domains,
+                                    "corrections_paused": paused, "halt": {}, "attempts": {}})
+    return run_id, None
 
-        def work():
-            halt = {}
-            for domain in domains:
-                try:
-                    pipeline.run_company(domain, run_id, send=False, apply_corrections=not paused, halt=halt)  # sending is the operator's click on Review
-                except Exception as e:  # one company failing never stops the run
-                    (run_dir / ("%s.json" % domain)).write_text(json.dumps({
-                        "domain": domain, "run_id": run_id, "verdict": "flagged", "flags": [],
-                        "reason": "Something went wrong researching this company (%s)." % type(e).__name__}))
-            meta["finished_at"] = _now()
-            (run_dir / "run.json").write_text(json.dumps(meta, indent=2))
 
-        _active["thread"] = threading.Thread(target=work, daemon=True)
-        _active["thread"].start()
-        return run_id, None
+def step(run_id):
+    """Research the next unfinished company in the run, then return the run state. Safe with two tabs open."""
+    if not RUN_ID.fullmatch(run_id or ""):
+        return None, (400, "Bad request.")
+    meta = store.STORE.get("run", run_id)
+    if not meta:
+        return None, (404, "No such run.")
+    for domain in meta["domains"]:
+        if store.STORE.get("record", "%s/%s" % (run_id, domain)):
+            continue
+        if not store.STORE.claim("step:%s:%s" % (run_id, domain), ttl=STEP_TTL):
+            continue  # another request is researching it right now
+        tries = meta["attempts"].get(domain, 0) + 1
+        meta["attempts"][domain] = tries
+        store.STORE.put("run", run_id, meta)
+        if tries > MAX_ATTEMPTS:  # the step was killed twice (time limit): stop retrying, tell the operator
+            _failed(run_id, domain, "Research took too long twice and was stopped.")
+        else:
+            try:
+                pipeline.run_company(domain, run_id, send=False, apply_corrections=not meta["corrections_paused"],
+                                     halt=meta["halt"])  # sending is the operator's click on Review
+            except Exception as e:  # one company failing never stops the run
+                _failed(run_id, domain, "Something went wrong researching this company (%s)." % type(e).__name__)
+            fresh = store.STORE.get("run", run_id)  # keep attempts written by other requests, add this halt state
+            fresh["halt"] = meta["halt"]
+            store.STORE.put("run", run_id, fresh)
+        break
+    return state(run_id), None
+
+
+def _failed(run_id, domain, reason):
+    store.STORE.put("record", "%s/%s" % (run_id, domain),
+                    {"domain": domain, "run_id": run_id, "verdict": "flagged", "flags": [], "reason": reason})
 
 
 def _ready(r):
@@ -67,20 +87,18 @@ def _mostly_rejected(run):
 def loop_summary():
     """Average disagreement over the last 10 drafts the operator acted on (0 = sent untouched, 1 = rejected)."""
     acted = []
-    for path in RUNS.glob("*/*.json"):
-        if path.name != "run.json":
-            review = json.loads(path.read_text()).get("review") or {}
-            when = review.get("sent_at") or review.get("skipped_at")
-            if when and "disagreement" in review:
-                acted.append((when, review["disagreement"]))
+    for r in store.STORE.records():
+        review = r.get("review") or {}
+        when = review.get("sent_at") or review.get("skipped_at")
+        if when and "disagreement" in review:
+            acted.append((when, review["disagreement"]))
     last = [d for _, d in sorted(acted)[-10:]]
     return {"drafts_counted": len(last), "avg_disagreement": round(sum(last) / len(last), 2) if last else None}
 
 
 def cost_per_company():
     """Measured Claude cost per company, for the estimate on the Run screen."""
-    costs = [c for c in (json.loads(p.read_text()).get("claude_cost_usd") for p in RUNS.glob("*/*.json")
-                         if p.name != "run.json") if c]
+    costs = [c for c in (r.get("claude_cost_usd") for r in store.STORE.records()) if c]
     return round(sum(costs) / len(costs), 3) if len(costs) >= 10 else None  # too few to trust: the screen keeps its default
 
 
@@ -90,24 +108,24 @@ def _save_correction(record, review, row):
 
 
 def latest():
-    ids = sorted(p.name for p in RUNS.glob("*") if RUN_ID.match(p.name) and (p / "run.json").exists())
+    ids = [i for i in store.STORE.run_ids() if RUN_ID.fullmatch(i)]
     return state(ids[-1]) if ids else None
 
 
 def state(run_id):
-    run_dir = RUNS / run_id
-    meta = json.loads((run_dir / "run.json").read_text())
+    meta = store.STORE.get("run", run_id)
     records = []
     for domain in meta["domains"]:
-        path = run_dir / ("%s.json" % domain)
-        if path.exists():
-            r = json.loads(path.read_text())
+        r = store.STORE.get("record", "%s/%s" % (run_id, domain))
+        if r:
             r["status"] = status_of(r)
             records.append(r)
         else:
             records.append({"domain": domain, "status": "Researching", "pending": True})
-    if not meta["finished_at"] and not (_active["thread"] and _active["thread"].is_alive()):
-        meta["interrupted"] = True  # the server stopped mid-run
+    if not meta.get("finished_at") and all(not r.get("pending") for r in records):
+        meta["finished_at"] = _now()  # the step that finishes the last company calls state() right away
+        meta.pop("records", None)
+        store.STORE.put("run", run_id, meta)
     meta["records"] = records
     meta["hunter_searches_used"] = sum(1 for r in records if r.get("hunter_search_spent"))
     return meta
@@ -119,12 +137,15 @@ def act(run_id, domain, action, edits=None):
     edits = edits or {}
     if not RUN_ID.fullmatch(run_id or "") or action not in ("send", "rewrote", "skip"):
         return None, (400, "Bad request.")
-    path = RUNS / run_id / ("%s.json" % domain)
-    meta_path = RUNS / run_id / "run.json"
-    if not meta_path.exists() or domain not in json.loads(meta_path.read_text())["domains"] or not path.exists():
+    meta = store.STORE.get("run", run_id)
+    key = "%s/%s" % (run_id, domain)
+    if not meta or domain not in meta["domains"] or not store.STORE.get("record", key):
         return None, (404, "That company is not in this run.")
-    with _lock:  # one action at a time, so a double click can never send or store twice
-        r = json.loads(path.read_text())
+    for k in ("subject", "body", "reason"):  # checked here too, before any email goes out
+        if k in edits and not isinstance(edits[k], str):
+            return None, (400, "Bad request.")
+    with _lock:
+        r = store.STORE.get("record", key)
         draft = r.get("draft") or {}
         if not _ready(r):
             return None, (409, "This company has no draft ready to act on.")
@@ -135,15 +156,18 @@ def act(run_id, domain, action, edits=None):
                 if not edits["body"].strip() or not edits.get("subject", "").strip():
                     return None, (400, "The email needs a subject and a body.")
                 change = feedback.compare(draft, edits["subject"], edits["body"])
+            if not store.STORE.claim("send:" + key):  # across serverless instances: one email per draft
+                return None, (409, "This draft is already being sent.")
             if change:
                 review["edited"] = {"subject": edits["subject"].strip(), "body": edits["body"].strip() + "\n"}
             subject = review["edited"]["subject"] if change else draft["subject"]
             try:
-                send_to_operator("[Draft] %s | %s" % (subject, r.get("name") or domain), pipeline.inbox_email(r))
+                send_to_operator(pipeline.subject_line(subject, r.get("name") or domain), pipeline.inbox_email(r))
             except Exception as e:
+                store.STORE.release("send:" + key)  # nothing went out: allow a retry
                 review.pop("edited", None)
                 review["send_error"] = "Gmail send failed (%s). Try again." % type(e).__name__
-                path.write_text(json.dumps(r, indent=2))
+                store.STORE.put("record", key, r)
                 return None, (502, review["send_error"])
             review.update(status="Rewritten" if change or review.get("rewritten") else "Sent to me", sent_at=_now(),
                           disagreement=change["disagreement"] if change else 0.0)
@@ -156,6 +180,6 @@ def act(run_id, domain, action, edits=None):
         elif action == "skip" and not review.get("skipped") and not review.get("sent_at"):
             review.update(skipped=True, skipped_at=_now(), disagreement=1.0)
             _save_correction(r, review, feedback.row_for(r, None, edits.get("reason"), rejected=True))
-        path.write_text(json.dumps(r, indent=2))
+        store.STORE.put("record", key, r)
     r["status"] = status_of(r)
     return r, None

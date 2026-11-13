@@ -15,6 +15,7 @@ from scrape import fetch  # noqa: E402
 
 
 def main(args):
+    checks.plain_terminal()
     hunter_domain = None
     if "--hunter" in args:
         i = args.index("--hunter")

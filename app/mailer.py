@@ -14,15 +14,21 @@ def send_to_operator(subject, body):
     message = EmailMessage()
     message["From"], message["To"], message["Subject"] = sender, recipient, subject
     message.set_content(body)
-    for attempt in (1, 2):
+    for attempt in (1, 2):  # only connecting and logging in are retried: a retry after the message went out would send it twice
         try:
-            with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=20) as smtp:
-                smtp.login(sender, os.environ["GMAIL_APP_PASSWORD"].replace(" ", ""))
-                smtp.send_message(message)
-            return
+            smtp = smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=20)
+            smtp.login(sender, os.environ["GMAIL_APP_PASSWORD"].replace(" ", ""))
+            break
         except smtplib.SMTPAuthenticationError:
             raise  # a rejected login will not pass on a second try
         except Exception:
             if attempt == 2:
                 raise
             time.sleep(RETRY_WAIT)
+    try:
+        smtp.send_message(message)  # never retried
+    finally:
+        try:
+            smtp.quit()
+        except Exception:
+            pass  # the message is already accepted; a failed goodbye is not a failed send

@@ -19,7 +19,7 @@
   const traceLine = c => `${c.from_pack} of ${c.from_pack + c.generic + c.made_up + c.banned} sentences from the pack, ${c.generic} generic, ${c.made_up} made up, ${c.banned} banned`;
 
   function why(r) {
-    if (r.pending) return run.finished_at || run.interrupted ? "Not researched: the run stopped before this company." : "Researching this company now.";
+    if (r.pending) return "Researching this company now.";
     if (ready(r)) return `${r.contact.position}: ${r.draft.subject}`;
     return r.reason || "";
   }
@@ -33,8 +33,7 @@
     if (run.finished_at) {
       const secs = Math.round((new Date(run.finished_at) - start) / 1000);
       when += `, took ${secs >= 60 ? Math.floor(secs / 60) + " min " : ""}${secs % 60} s`;
-    } else if (run.interrupted) when += ". The run stopped when the server stopped";
-    else when += `. Researching: ${done} of ${n} done`;
+    } else when += `. Researching: ${done} of ${n} done`;
     $("run-meta").textContent = `${when}. Hunter searches used: ${run.hunter_searches_used}.` +
       (run.corrections_paused ? " Your corrections were not applied to this run: more than half of the last run's drafts were skipped." : "");
     $("c-need").textContent = recs.filter(r => r.status === "Flagged").length;
@@ -89,7 +88,7 @@
       `<label class="label" for="ed-subject">Subject</label><input id="ed-subject" class="field subject-field" type="text" maxlength="200" autocomplete="off" value="${esc(subject)}" ${ro}>` +
       `<label class="label" for="ed-body">Email</label><textarea id="ed-body" class="field body-field" maxlength="5000" rows="12" ${ro}>${esc(body)}</textarea>` +
       (locked ? "" : `<p class="hint" id="ed-hint">Edit the subject or the email before sending. Your changes teach the next drafts.</p>` +
-        `<label class="label" for="ed-reason">Why did you change it? (optional)</label><input id="ed-reason" class="field" type="text" maxlength="300" autocomplete="off" placeholder="Too long. Ask about ISO 27001, not SOC 2.">`);
+        `<label class="label" for="ed-reason">Why did you change it? (optional)</label><input id="ed-reason" class="field" type="text" maxlength="1000" autocomplete="off" placeholder="Too long. Ask about ISO 27001, not SOC 2.">`);
   }
 
   function detailHtml(r) {
@@ -172,7 +171,7 @@
     }
     buttons.forEach(b => (b.disabled = true));
     try {
-      const res = await fetch("/api/action", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+      const res = signInIfNeeded(await fetch("/api/action", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }));
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "That did not work. Try again.");
       run.records[run.records.findIndex(x => x.domain === r.domain)] = data.record;
@@ -191,18 +190,23 @@
     });
   }
 
+  function show(newRun) {
+    run = newRun;
+    $("run").hidden = false;
+    if (!selected || !run.records.some(r => r.domain === selected)) selected = defaultSelection();
+    renderHeader(); renderList(); renderDetail(false);
+  }
+
   async function load() {
     try {
-      const data = await (await fetch("/api/runs/latest")).json();
+      const data = await signInIfNeeded(await fetch("/api/runs/latest")).json();
       $("loading").hidden = true;
       $("load-error").hidden = true;
       if (!data.run) { $("empty").hidden = false; return; }
-      run = data.run;
-      $("run").hidden = false;
-      if (!selected || !run.records.some(r => r.domain === selected)) selected = defaultSelection();
-      renderHeader(); renderList(); renderDetail(false);
-      if (!run.finished_at && !run.interrupted) setTimeout(load, 2000);
+      show(data.run);
+      if (!run.finished_at) research();
     } catch (e) {
+      if (e.message === "Signing in") return;
       $("loading").hidden = true;
       $("load-error").textContent = "The app is not responding. Check that the server is still running, then reload.";
       $("load-error").hidden = false;
@@ -210,16 +214,36 @@
     }
   }
 
+  // The server researches one company per request (serverless functions stop when they answer), so this
+  // page keeps asking until every company is done. Closing the page pauses the run; opening it resumes.
+  async function research() {
+    while (run && !run.finished_at) {
+      try {
+        const res = signInIfNeeded(await fetch("/api/step", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ run_id: run.id }) }));
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "step failed");
+        show(data.run);
+        quota();
+      } catch (e) {
+        if (e.message === "Signing in") return;
+        $("load-error").textContent = "Research paused: the app did not answer. It will try again in a few seconds.";
+        $("load-error").hidden = false;
+        await new Promise(r => setTimeout(r, 5000));
+        $("load-error").hidden = true;
+      }
+    }
+  }
+
   async function quota() {
     try {
-      const q = await (await fetch("/api/quota")).json();
+      const q = await signInIfNeeded(await fetch("/api/quota")).json();
       if (q.ok) $("c-hunter").textContent = `${q.searches_left} of ${q.searches_total}`;
     } catch (e) { /* the count stays "-" */ }
   }
 
   async function loop() {
     try {
-      const f = await (await fetch("/api/feedback")).json();
+      const f = await signInIfNeeded(await fetch("/api/feedback")).json();
       $("c-disagree").textContent = f.avg_disagreement === null ? "-" : Math.round(f.avg_disagreement * 100) + "%";
       $("c-disagree-note").textContent = f.drafts_counted ? `last ${f.drafts_counted} ${f.drafts_counted === 1 ? "draft" : "drafts"}` : "no drafts acted on yet";
       $("loop-off").textContent = f.ok ? "" : f.detail;

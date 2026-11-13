@@ -18,6 +18,7 @@ import mailer  # noqa: E402
 import metrics  # noqa: E402
 import pipeline  # noqa: E402
 import scrape  # noqa: E402
+import store  # noqa: E402
 from test_phase1 import BASE  # noqa: E402
 
 
@@ -45,14 +46,16 @@ class ClaudeFailures(unittest.TestCase):
 
     def answers(self, *outcomes):
         outcomes = list(outcomes)
+        test = self
 
-        def urlopen(request, timeout=None):
-            self.calls += 1
-            out = outcomes.pop(0)
-            if isinstance(out, Exception):
-                raise out
-            return io.BytesIO(json.dumps(out).encode())
-        self.swap(claude.urllib.request, "urlopen", urlopen)
+        class Opener:
+            def open(self, request, timeout=None):
+                test.calls += 1
+                out = outcomes.pop(0)
+                if isinstance(out, Exception):
+                    raise out
+                return io.BytesIO(json.dumps(out).encode())
+        self.swap(claude.urllib.request, "build_opener", lambda *a: Opener())
 
     OK = {"stop_reason": "end_turn", "content": [{"type": "text", "text": "{\"a\": 1}"}],
           "usage": {"input_tokens": 1_000_000, "output_tokens": 100_000}}
@@ -117,18 +120,17 @@ class PageFailures(unittest.TestCase):
         self.assertEqual(self.opens, 1)
         self.assertIn("blocked automated access", page["reason"])
 
-    def test_empty_page_gets_one_browser_try_then_a_flag(self):
-        renders = []
-        self.swap(scrape, "render", lambda url: renders.append(url) or "<p>still nothing</p>")
+    def test_empty_page_is_flagged_and_no_browser_is_started(self):
         self.site("<html><body><div id=root></div></body></html>")
         page = scrape.fetch("https://kestrelmetrics.io/")
-        self.assertEqual((page["ok"], len(renders)), (False, 1))
+        self.assertEqual(page["ok"], False)
         self.assertIn("site needs a browser", page["reason"])
+        self.assertFalse(hasattr(scrape, "render"))  # the Chrome fallback was removed on purpose
 
-    def test_browser_try_can_rescue_the_page(self):
-        self.swap(scrape, "render", lambda url: "<p>%s</p>" % " ".join("word%d" % i for i in range(300)))
-        self.site("<html><body><div id=root></div></body></html>")
-        self.assertTrue(scrape.fetch("https://kestrelmetrics.io/")["ok"])
+    def test_redirect_away_from_https_is_refused(self):
+        guard = scrape._RedirectGuard()
+        with self.assertRaises(scrape.Blocked):
+            guard.redirect_request(None, None, 302, "Found", {}, "http://kestrelmetrics.io:8080/")
 
 
 class GmailFailures(unittest.TestCase):
@@ -192,8 +194,7 @@ class RunLevelStops(unittest.TestCase):
         self.swap = Swap(self)
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
-        self.swap(pipeline, "DATA", Path(self.tmp.name))
-        self.swap(pipeline, "ROOT", Path(self.tmp.name))
+        self.swap(store, "STORE", store.FileStore(self.tmp.name))
         self.swap(pipeline, "research", lambda domain: dict(FOUND, fields=dict(FIELDS)))
         self.swap(pipeline, "HUNTER_WAIT", 0)
 
@@ -241,7 +242,7 @@ class RunLevelStops(unittest.TestCase):
         self.swap(pipeline, "research", lambda d: researched.append(d) or {"ok": False, "reason": "blocked", "pages": []})
         halt = {}
         pipeline.run_company("a.io", "r", halt=halt)
-        self.swap(claude, "spent", {"usd": claude.spent["usd"] + pipeline.CONFIG["max_run_cost_usd"]})
+        halt["spent"] = pipeline.CONFIG["max_run_cost_usd"]  # what earlier companies in this run cost
         r = pipeline.run_company("b.io", "r", halt=halt)
         self.assertEqual(researched, ["a.io"])
         self.assertIn("cost cap", r["reason"])

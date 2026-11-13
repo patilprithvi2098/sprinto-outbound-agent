@@ -12,6 +12,11 @@ ATTEMPTS, BACKOFF = 3, 2.0
 spent = {"usd": 0.0}  # running total for this process; the pipeline reads it for the per-run cost cap
 
 
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, *args):
+        return None
+
+
 class ClaudeError(Exception):
     pass
 
@@ -31,9 +36,10 @@ def ask_json(model, system, user, schema, effort="medium", timeout=120):
         body["fallbacks"] = "default"
         headers["anthropic-beta"] = "server-side-fallback-2026-07-01"
     request = urllib.request.Request("https://api.anthropic.com/v1/messages", json.dumps(body).encode(), headers)
+    opener = urllib.request.build_opener(_NoRedirect)  # the key never follows a redirect
     for attempt in range(1, ATTEMPTS + 1):
         try:
-            with urllib.request.urlopen(request, timeout=timeout) as response:
+            with opener.open(request, timeout=timeout) as response:
                 message = json.load(response)
             break
         except urllib.error.HTTPError as e:

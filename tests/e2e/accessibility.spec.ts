@@ -5,6 +5,7 @@ import { READY, FLAGGED, DROPPED, run } from "./fixtures";
 // ADAPT: one entry per page/route in the app.
 const PAGES = [
   { path: "/", name: "Run" },
+  { path: "/login.html", name: "Sign in" },
   { path: "/review.html", name: "Review (empty)", data: { run: null } },
   { path: "/review.html", name: "Review (flagged open)", data: run([FLAGGED, READY, DROPPED]) },
   { path: "/review.html", name: "Review (draft open)", data: run([READY, DROPPED]) },

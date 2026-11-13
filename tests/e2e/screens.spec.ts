@@ -5,7 +5,7 @@ import { READY, FLAGGED, DROPPED, run } from "./fixtures";
 //   npx playwright test tests/e2e/screens.spec.ts --project=chrome
 // Output: test-results/screens/<page>-<width>.png
 // ADAPT: the page list.
-const PAGES = [{ path: "/", name: "run", data: null }, { path: "/review.html", name: "review-empty", data: { run: null } },
+const PAGES = [{ path: "/login.html", name: "login", data: null }, { path: "/", name: "run", data: null }, { path: "/review.html", name: "review-empty", data: { run: null } },
   { path: "/review.html", name: "review", data: run([FLAGGED, READY, DROPPED]) }];
 const WIDTHS = [375, 768, 1440];
 

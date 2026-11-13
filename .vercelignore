@@ -1,0 +1,12 @@
+.env
+data/
+node_modules/
+tests/
+test-results/
+playwright-report/
+mesa-previews/
+docs/
+db/
+feasibility.py
+metrics.py
+run.py

@@ -123,19 +123,43 @@ test("I rewrote it marks the draft Rewritten; Skip disables sending", async ({ p
   await expect(detail(page).getByRole("button", { name: "Send to my inbox" })).toBeDisabled();
 });
 
-test("while a run is going, companies arrive as they finish", async ({ page }) => {
+test("while a run is going, the page researches one company per request until done", async ({ page }) => {
   const pending = { domain: "fernpay.com", status: "Researching", pending: true };
-  await open(page, [run([READY, pending], { finished_at: null }), run([READY, DROPPED])]);
+  const steps: string[] = [];
+  await page.route("**/api/step", async (route) => {
+    steps.push(route.request().postDataJSON().run_id);
+    await new Promise((r) => setTimeout(r, 400));
+    await route.fulfill({ contentType: "application/json", body: JSON.stringify(run([READY, DROPPED])) });
+  });
+  await open(page, run([READY, pending], { finished_at: null }));
   await expect(page.getByText(/Researching: 1 of 2 done/)).toBeVisible();
   await expect(item(page, "fernpay.com").locator(".chip")).toHaveText("Researching");
   await expect(item(page, "Fernpay").locator(".chip")).toHaveText("Disqualified", { timeout: 6000 });
   await expect(page.locator('li[data-domain="fernpay.com"]')).toHaveClass(/arrive/);
+  expect(steps).toEqual(["20261112-130000"]); // one step, then the run reports finished and the page stops asking
 });
 
-test("a run cut off by a server restart says so instead of spinning", async ({ page }) => {
-  await open(page, run([READY, { domain: "fernpay.com", status: "Researching", pending: true }], { finished_at: null, interrupted: true }));
-  await expect(page.getByText(/The run stopped when the server stopped/)).toBeVisible();
-  await expect(page.getByText("Not researched: the run stopped before this company.")).toBeVisible();
+test("if a research step fails, the page says so and tries again", async ({ page }) => {
+  const pending = { domain: "fernpay.com", status: "Researching", pending: true };
+  let calls = 0;
+  await page.route("**/api/step", async (route) => {
+    calls += 1;
+    if (calls === 1) return route.abort();
+    await route.fulfill({ contentType: "application/json", body: JSON.stringify(run([READY, DROPPED])) });
+  });
+  await open(page, run([READY, pending], { finished_at: null }));
+  await expect(page.getByText("Research paused: the app did not answer. It will try again in a few seconds.")).toBeVisible();
+  await expect(item(page, "Fernpay").locator(".chip")).toHaveText("Disqualified", { timeout: 12000 });
+  expect(calls).toBe(2);
+});
+
+test("an expired sign-in sends the operator to the sign-in page and back", async ({ page }) => {
+  guardDialogs(page);
+  await page.route("**/api/runs/latest", (r) => r.fulfill({ status: 401, contentType: "application/json", body: JSON.stringify({ error: "Sign in", login: true }) }));
+  await page.route("**/api/quota", (r) => r.fulfill({ status: 401, contentType: "application/json", body: "{}" }));
+  await page.route("**/api/feedback", (r) => r.fulfill({ status: 401, contentType: "application/json", body: "{}" }));
+  await page.goto("/review.html");
+  await expect(page).toHaveURL(/login\.html\?next=review\.html$/);
 });
 
 test("server down shows a plain message", async ({ page }) => {
@@ -215,10 +239,10 @@ test("very long edits are capped in the fields and never overflow the page", asy
   const d = detail(page);
   await d.getByLabel("Subject").fill("s".repeat(400));
   await d.getByLabel("Email", { exact: true }).fill("b".repeat(6000));
-  await d.getByLabel("Why did you change it? (optional)").fill("r".repeat(500));
+  await d.getByLabel("Why did you change it? (optional)").fill("r".repeat(1200));
   expect((await d.getByLabel("Subject").inputValue()).length).toBe(200);
   expect((await d.getByLabel("Email", { exact: true }).inputValue()).length).toBe(5000);
-  expect((await d.getByLabel("Why did you change it? (optional)").inputValue()).length).toBe(300);
+  expect((await d.getByLabel("Why did you change it? (optional)").inputValue()).length).toBe(1000);
   expect(await hasHorizontalOverflow(page)).toBe(false);
 });
 

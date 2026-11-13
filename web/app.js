@@ -18,7 +18,7 @@
     showError("");
     runBtn.disabled = true;
     try {
-      const res = await fetch("/api/domains", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text: box.value }) });
+      const res = signInIfNeeded(await fetch("/api/domains", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text: box.value }) }));
       const data = await res.json();
       if (!res.ok) { showError(data.error || "The list could not be checked."); return; }
       const ok = data.valid.map(d => `<li><span class="mono">${esc(d)}</span><span class="muted">ready</span></li>`).join("");
@@ -47,7 +47,7 @@
     btn.disabled = true;
     btn.textContent = "Starting";
     try {
-      const res = await fetch("/api/run", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text: domains.join("\n") }) });
+      const res = signInIfNeeded(await fetch("/api/run", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text: domains.join("\n") }) }));
       const data = await res.json();
       if (res.ok) { location.href = "review.html"; return; }
       err.textContent = data.error || "The run could not start.";
@@ -69,7 +69,7 @@
     recheck.disabled = true;
     ["claude", "hunter", "gmail"].forEach(n => setChip(n, "wait", "Checking"));
     try {
-      const data = await (await fetch("/api/setup-check")).json();
+      const data = await signInIfNeeded(await fetch("/api/setup-check", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}) })).json();
       for (const name of ["claude", "hunter", "gmail"]) {
         setChip(name, data[name].ok ? "ok" : "bad", data[name].ok ? "Working" : "Needs you");
         document.querySelector(`[data-detail="${name}"]`).textContent = data[name].detail;

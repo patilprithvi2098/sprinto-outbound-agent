@@ -8,7 +8,7 @@ import ssl
 from urllib.parse import unquote, urlparse
 
 PARTS = ("hook", "pain", "value", "ask")
-MAX_SUBJECT, MAX_BODY, MAX_REASON = 200, 5000, 300
+MAX_SUBJECT, MAX_BODY, MAX_REASON = 200, 5000, 1000
 _GREETING = re.compile(r"^\s*(hi|hello|hey|dear)\b[^\n]*\n+", re.I)
 _COLUMNS = ("operator", "domain", "contact_role", "role_tier", "company_stage", "sector", "company_trigger",
             "subject_before", "body_before", "subject_after", "body_after", "reason", "disagreement", "rejected",
@@ -181,10 +181,12 @@ def prompt_section(found):
     if found["pattern"]:
         lines.append("Pattern: %s" % found["pattern"])
     for i, r in enumerate(found["rows"], 1):
-        lines += ["", "Correction %d (role: %s):" % (i, r["contact_role"] or "unknown"),
+        role = " ".join((r["contact_role"] or "unknown").split())[:80]  # Hunter text: one short line only
+        lines += ["", "Correction %d (role: %s):" % (i, role),
                   "BEFORE subject: %s" % r["subject_before"], "BEFORE body: %s" % r["body_before"],
                   "AFTER subject: %s" % r["subject_after"], "AFTER body: %s" % r["body_after"]]
         if r["reason"]:
             lines.append("His reason: %s" % r["reason"])
     lines.append("</corrections>")
-    return "\n".join(lines)
+    body = "\n".join(lines[1:-1]).replace("<", "\u2039").replace(">", "\u203a")  # stored text cannot close the tag
+    return "\n".join([lines[0], body, lines[-1]])

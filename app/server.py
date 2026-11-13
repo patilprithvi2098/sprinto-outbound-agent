@@ -1,9 +1,12 @@
 """Local server for the Sprinto outbound agent. Run: python3 app/server.py"""
 import json
+import os
+import time
 from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
+import auth
 import checks
 import feedback
 import runs
@@ -16,22 +19,42 @@ MAX_BODY = 20_000
 # server, so every request must name this server itself in Host, and a browser Origin, when sent, must match.
 ALLOWED_HOSTS = {"%s:%d" % (HOST, PORT), "localhost:%d" % PORT}
 ALLOWED_ORIGINS = {"http://" + h for h in ALLOWED_HOSTS}
+ON_VERCEL = bool(os.environ.get("VERCEL"))  # public HTTPS host: rebinding does not apply, the Origin must match the Host
+OPEN_ROUTES = {"/api/login", "/api/logout"}
 
 
 class Handler(SimpleHTTPRequestHandler):
     timeout = 10  # a client that stalls mid-request releases its thread instead of holding it forever
 
     def _trusted(self):
-        origin = self.headers.get("Origin")
-        if self.headers.get("Host", "").lower() in ALLOWED_HOSTS and (origin is None or origin.lower() in ALLOWED_ORIGINS):
+        host, origin = self.headers.get("Host", "").lower(), self.headers.get("Origin")
+        if ON_VERCEL:
+            if origin is None or origin.lower() == "https://" + host:
+                return True
+            self._json(403, {"error": "Requests must come from this app."})
+            return False
+        if host in ALLOWED_HOSTS and (origin is None or origin.lower() in ALLOWED_ORIGINS):
             return True
-        self._json(421 if self.headers.get("Host", "").lower() not in ALLOWED_HOSTS else 403,
-                   {"error": "Open the app at http://%s:%d." % (HOST, PORT)})
+        self._json(421 if host not in ALLOWED_HOSTS else 403, {"error": "Open the app at http://%s:%d." % (HOST, PORT)})
         return False
 
-    def _json(self, code, payload):
+    def _signed_in(self):
+        """API calls need the app password's cookie whenever a password is set (always on Vercel)."""
+        if not self.path.startswith("/api/") or self.path in OPEN_ROUTES or not auth.required():
+            return True
+        if not os.environ.get("APP_PASSWORD"):
+            self._json(503, {"error": "The app password is not set. Add APP_PASSWORD in the Vercel project settings."})
+            return False
+        if auth.valid(self.headers.get("Cookie")):
+            return True
+        self._json(401, {"error": "Sign in with the app password.", "login": True})
+        return False
+
+    def _json(self, code, payload, cookie=None):
         body = json.dumps(payload).encode()
         self.send_response(code)
+        if cookie:
+            self.send_header("Set-Cookie", cookie)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
@@ -46,10 +69,8 @@ class Handler(SimpleHTTPRequestHandler):
         super().end_headers()
 
     def do_GET(self):
-        if not self._trusted():
+        if not self._trusted() or not self._signed_in():
             return
-        if self.path == "/api/setup-check":
-            return self._json(200, dict(checks.run_all(), estimate={"cost_per_company": runs.cost_per_company()}))
         if self.path == "/api/quota":  # Hunter only: the Review screen should not log in to Gmail on every load
             return self._json(200, checks.check_hunter())
         if self.path == "/api/feedback":
@@ -61,7 +82,7 @@ class Handler(SimpleHTTPRequestHandler):
         super().do_GET()
 
     def do_POST(self):
-        if not self._trusted():
+        if not self._trusted() or not self._signed_in():
             return
         # JSON only: another website cannot send this content type here without a preflight we never answer.
         if self.headers.get("Content-Type", "").split(";")[0].strip() != "application/json":
@@ -80,6 +101,20 @@ class Handler(SimpleHTTPRequestHandler):
             return self._json(400, {"error": "Bad request."})
         if not isinstance(data, dict):
             return self._json(400, {"error": "Bad request."})
+        if self.path == "/api/login":
+            if auth.check_password(data.get("password")):
+                return self._json(200, {"ok": True}, cookie=auth.new_cookie(secure=ON_VERCEL))
+            time.sleep(1)  # slows password guessing
+            return self._json(401, {"error": "That password is not right."})
+        if self.path == "/api/logout":
+            return self._json(200, {"ok": True}, cookie=auth.clear_cookie(secure=ON_VERCEL))
+        if self.path == "/api/setup-check":  # POST only: it logs in to Gmail, so a stray link or image must not trigger it
+            return self._json(200, dict(checks.run_all(), estimate={"cost_per_company": runs.cost_per_company()}))
+        if self.path == "/api/step" and isinstance(data.get("run_id"), str):
+            state, error = runs.step(data["run_id"])
+            if error:
+                return self._json(error[0], {"error": error[1]})
+            return self._json(200, {"run": state})
         if self.path == "/api/domains" and isinstance(data.get("text"), str):
             return self._json(200, parse_domains(data["text"]))
         if self.path == "/api/run" and isinstance(data.get("text"), str):
