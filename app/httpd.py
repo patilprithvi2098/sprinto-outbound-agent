@@ -1,4 +1,5 @@
-"""Local server for the Sprinto outbound agent. Run: python3 app/server.py"""
+"""Local server for the Sprinto outbound agent. Run: python3 app/httpd.py
+(Not named server.py: Vercel would take app/server.py as a whole-app entrypoint and ignore the api/ functions.)"""
 import json
 import os
 import time

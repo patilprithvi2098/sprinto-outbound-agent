@@ -24,7 +24,7 @@ export default defineConfig({
     { name: "chrome-375", use: { ...devices["Desktop Chrome"], channel: "chrome", viewport: { width: 375, height: 812 }, isMobile: true, hasTouch: true } },
   ],
   webServer: {
-    command: "python3 app/server.py",
+    command: "python3 app/httpd.py",
     url: `http://127.0.0.1:${PORT}/`,
     reuseExistingServer: true,
     timeout: 180_000,

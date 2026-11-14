@@ -4,7 +4,7 @@
     {
       "name": "sprinto-app",
       "runtimeExecutable": "python3",
-      "runtimeArgs": ["app/server.py"],
+      "runtimeArgs": ["app/httpd.py"],
       "port": 8321
     },
     {

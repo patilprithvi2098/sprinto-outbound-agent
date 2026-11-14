@@ -32,7 +32,7 @@ Python 3.9+ is required.
 ```bash
 python3 -m pip install --user -r requirements.txt
 cp .env.example .env    # then fill in the values
-python3 app/server.py   # http://127.0.0.1:8321
+python3 app/httpd.py   # http://127.0.0.1:8321
 ```
 
 Without `APP_PASSWORD`, the local app is open on 127.0.0.1 only. A terminal run is also available: `python3 run.py dub.co plausible.io`.

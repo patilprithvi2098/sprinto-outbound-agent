@@ -14,7 +14,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "app"))
 import runs  # noqa: E402
 import scrape  # noqa: E402
-import server  # noqa: E402
+import httpd as server  # noqa: E402
 
 GOOD = "127.0.0.1:8321"  # the Host the browser sends for the real app; the test server listens elsewhere
 

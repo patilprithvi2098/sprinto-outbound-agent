@@ -2,7 +2,7 @@
   "name": "sprinto-outbound-agent",
   "private": true,
   "scripts": {
-    "start": "python3 app/server.py",
+    "start": "python3 app/httpd.py",
     "test": "python3 -m unittest discover -s tests",
     "test:e2e": "playwright test",
     "test:e2e:report": "playwright show-report"
