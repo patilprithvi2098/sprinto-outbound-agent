@@ -5,7 +5,11 @@
   "installCommand": "",
   "outputDirectory": "web",
   "functions": {
-    "api/**/*.py": {
+    "api/*.py": {
+      "maxDuration": 300,
+      "includeFiles": "{app,prompts,config}/**"
+    },
+    "api/runs/*.py": {
       "maxDuration": 300,
       "includeFiles": "{app,prompts,config}/**"
     }
@@ -14,9 +18,18 @@
     {
       "source": "/(.*)",
       "headers": [
-        { "key": "X-Frame-Options", "value": "DENY" },
-        { "key": "Content-Security-Policy", "value": "frame-ancestors 'none'" },
-        { "key": "Referrer-Policy", "value": "same-origin" }
+        {
+          "key": "X-Frame-Options",
+          "value": "DENY"
+        },
+        {
+          "key": "Content-Security-Policy",
+          "value": "frame-ancestors 'none'"
+        },
+        {
+          "key": "Referrer-Policy",
+          "value": "same-origin"
+        }
       ]
     }
   ]
