@@ -163,6 +163,37 @@ class PasswordGate(unittest.TestCase):
         self.assertFalse(auth.valid("sprinto_session=1.%s" % auth._sign(1)))  # signed but long expired
 
 
+class VercelEntry(unittest.TestCase):
+    """wsgi.py replays requests through the same Handler; check it end to end without a network."""
+
+    def call(self, method, path, body=b"", headers=None):
+        sys.path.insert(0, str(ROOT))
+        import io
+        import wsgi
+        environ = {"REQUEST_METHOD": method, "PATH_INFO": path, "QUERY_STRING": "", "wsgi.input": io.BytesIO(body),
+                   "CONTENT_LENGTH": str(len(body)) if body else "", "CONTENT_TYPE": "application/json" if body else "",
+                   "HTTP_HOST": GOOD}
+        environ.update(headers or {})
+        out = {}
+        chunks = wsgi.app(environ, lambda status, hdrs: out.update(status=status, headers=dict(hdrs)))
+        return out["status"], out["headers"], b"".join(chunks)
+
+    def test_api_answers_through_the_same_handler(self):
+        status, headers, body = self.call("POST", "/api/domains", json.dumps({"text": "dub.co, x"}).encode())
+        self.assertEqual(status, "200 OK")
+        self.assertEqual(json.loads(body)["valid"], ["dub.co"])
+        self.assertEqual(headers["X-Frame-Options"], "DENY")
+
+    def test_foreign_host_and_bad_length_are_still_refused(self):
+        self.assertTrue(self.call("GET", "/api/quota", headers={"HTTP_HOST": "evil.example:8321"})[0].startswith("421"))
+        self.assertTrue(self.call("POST", "/api/domains", b"{}", {"CONTENT_LENGTH": "-1"})[0].startswith("400"))
+
+    def test_static_page_is_served(self):
+        status, headers, body = self.call("GET", "/login.html")
+        self.assertEqual(status, "200 OK")
+        self.assertIn(b"App password", body)
+
+
 class RunIdShape(unittest.TestCase):
     def test_trailing_newline_is_refused(self):
         self.assertEqual(runs.act("20261112-130000\n", "dub.co", "send")[1][0], 400)

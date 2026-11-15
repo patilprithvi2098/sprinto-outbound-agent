@@ -1,5 +1,5 @@
 """Local server for the Sprinto outbound agent. Run: python3 app/httpd.py
-(Not named server.py: Vercel would take app/server.py as a whole-app entrypoint and ignore the api/ functions.)"""
+(Not named server.py: Vercel would take app/server.py as the app entrypoint; the entrypoint is wsgi.py at the top.)"""
 import json
 import os
 import time
@@ -13,7 +13,7 @@ import feedback
 import runs
 from domains import parse_domains
 
-WEB = Path(__file__).resolve().parent.parent / "web"
+WEB = Path(__file__).resolve().parent.parent / "public"  # public/: Vercel serves it straight from its CDN
 HOST, PORT = "127.0.0.1", 8321  # loopback only: this app holds credentials
 MAX_BODY = 20_000
 # DNS rebinding: a hostile page can point its own hostname at 127.0.0.1 and become "same origin" with this

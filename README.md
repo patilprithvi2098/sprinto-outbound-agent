@@ -20,7 +20,7 @@ The operator reviews each draft and its reasoning before anything is sent. Draft
 | Research loop: extract facts with quotes from the page, fetch the page where a missing fact lives, at most 4 extra pages | `app/pipeline.py`, `prompts/extract.md`, `config/icp.json` |
 | Qualify, pick the contact by role priority | `app/pipeline.py` |
 | Write and grade the draft | `prompts/write.md`, `prompts/grade.md` |
-| Review screen, send to own inbox, feedback loop | `web/`, `app/runs.py`, `app/mailer.py`, `app/feedback.py` |
+| Review screen, send to own inbox, feedback loop | `public/`, `app/runs.py`, `app/mailer.py`, `app/feedback.py` |
 | Storage: files locally, Neon Postgres on Vercel | `app/store.py`, `db/schema.sql` |
 
 The plan, decisions and test log are in `docs/mesa/`, and the design system is in `DESIGN.md`.

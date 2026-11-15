@@ -11,3 +11,6 @@
 /feasibility.py
 /metrics.py
 /run.py
+/package.json
+/package-lock.json
+/playwright.config.ts
