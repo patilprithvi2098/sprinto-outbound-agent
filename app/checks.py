@@ -109,6 +109,21 @@ def check_gmail():
         return _result(False, "Could not reach Gmail (%s)." % type(e).__name__)
 
 
+def check_storage():
+    import store  # imported here: store picks files or Neon when it loads
+    if isinstance(store.STORE, store.FileStore):
+        return _result(True, "Saved in files on this computer.")
+    try:
+        store.STORE.records()
+    except ImportError:
+        return _result(False, "The database driver is missing. Install requirements.txt.")
+    except Exception as e:  # the type only: a driver message can carry the connection string
+        if not os.environ.get("DATABASE_URL"):
+            return _result(False, "Not set. Add DATABASE_URL in the Vercel project settings.")
+        return _result(False, "Could not use the database (%s). Check DATABASE_URL and that db/schema.sql was run." % type(e).__name__)
+    return _result(True, "Connected.")
+
+
 def run_all():
     load_env()
-    return {"claude": check_claude(), "hunter": check_hunter(), "gmail": check_gmail()}
+    return {"claude": check_claude(), "hunter": check_hunter(), "gmail": check_gmail(), "storage": check_storage()}

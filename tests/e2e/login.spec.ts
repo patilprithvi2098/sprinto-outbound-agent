@@ -43,7 +43,7 @@ test("right password goes back to the page that asked, once, even on a double cl
 test("the next page can only be one of the app's own pages", async ({ page }) => {
   await open(page, encodeURIComponent("https://evil.example/"));
   await page.route("**/api/login", (r) => r.fulfill({ contentType: "application/json", body: "{\"ok\":true}" }));
-  await page.route("**/api/setup-check", (r) => r.fulfill({ contentType: "application/json", body: JSON.stringify({ claude: { ok: true, detail: "" }, hunter: { ok: true, detail: "", searches_left: 42, searches_total: 50 }, gmail: { ok: true, detail: "" } }) }));
+  await page.route("**/api/setup-check", (r) => r.fulfill({ contentType: "application/json", body: JSON.stringify({ claude: { ok: true, detail: "" }, hunter: { ok: true, detail: "", searches_left: 42, searches_total: 50 }, gmail: { ok: true, detail: "" }, storage: { ok: true, detail: "Connected." } }) }));
   await box(page).fill("correct horse");
   await submit(page).click();
   await expect(page).toHaveURL(/127\.0\.0\.1:8321\/index\.html$/);

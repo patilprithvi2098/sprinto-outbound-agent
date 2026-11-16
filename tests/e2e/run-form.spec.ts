@@ -6,7 +6,7 @@ import { guardDialogs, countWrites, hasHorizontalOverflow, tabUntil } from "./he
 const SETUP = {
   claude: { ok: true, detail: "Key accepted." },
   hunter: { ok: true, detail: "Key accepted.", searches_left: 19, searches_total: 50 },
-  gmail: { ok: false, detail: "Not set. Add OPERATOR_EMAIL and GMAIL_APP_PASSWORD to .env." },
+  gmail: { ok: false, detail: "Not set. Add OPERATOR_EMAIL and GMAIL_APP_PASSWORD to .env." }, storage: { ok: true, detail: "Connected." },
 };
 
 async function open(page: Page) {
@@ -114,7 +114,7 @@ test("server down shows a plain message, not a stack trace", async ({ page }) =>
 test("setup check shows each credential with a label, and the Hunter quota", async ({ page }) => {
   const calls = await open(page);
   await expect(page.getByText("19 of 50")).toBeVisible();
-  await expect(page.getByText("Working")).toHaveCount(2);
+  await expect(page.getByText("Working")).toHaveCount(3);
   await expect(page.getByText("Needs you")).toHaveCount(1);
   await expect(page.getByText("Not set. Add OPERATOR_EMAIL and GMAIL_APP_PASSWORD to .env.")).toBeVisible();
   await page.getByRole("button", { name: "Check again" }).click();

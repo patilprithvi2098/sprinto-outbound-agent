@@ -65,12 +65,13 @@
     chip.className = "chip " + state;
     chip.innerHTML = `<svg><use href="#i-${icon}"/></svg>${label}`;
   };
+  const CHECKS = ["claude", "hunter", "gmail", "storage"];
   const setupCheck = async () => {
     recheck.disabled = true;
-    ["claude", "hunter", "gmail"].forEach(n => setChip(n, "wait", "Checking"));
+    CHECKS.forEach(n => setChip(n, "wait", "Checking"));
     try {
       const data = await signInIfNeeded(await fetch("/api/setup-check", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}) })).json();
-      for (const name of ["claude", "hunter", "gmail"]) {
+      for (const name of CHECKS) {
         setChip(name, data[name].ok ? "ok" : "bad", data[name].ok ? "Working" : "Needs you");
         document.querySelector(`[data-detail="${name}"]`).textContent = data[name].detail;
       }
@@ -81,7 +82,7 @@
       low.hidden = !(data.hunter.ok && huntersLeft <= 5);
       low.textContent = huntersLeft === 0 ? "No searches left: runs will qualify companies but find no contacts until next month." : `Running low: ${huntersLeft} left.`;
     } catch (err) {
-      ["claude", "hunter", "gmail"].forEach(n => {
+      CHECKS.forEach(n => {
         setChip(n, "bad", "Needs you");
         document.querySelector(`[data-detail="${n}"]`).textContent = "The app is not responding.";
       });

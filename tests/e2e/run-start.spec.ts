@@ -5,7 +5,7 @@ import { guardDialogs, countWrites, hasHorizontalOverflow, tabUntil } from "./he
 const SETUP = {
   claude: { ok: true, detail: "Key accepted." },
   hunter: { ok: true, detail: "Key accepted.", searches_left: 43, searches_total: 50 },
-  gmail: { ok: true, detail: "Login accepted." },
+  gmail: { ok: true, detail: "Login accepted." }, storage: { ok: true, detail: "Connected." },
 };
 const EMPTY_RUN = { run: null };
 

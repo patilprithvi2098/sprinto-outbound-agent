@@ -201,3 +201,23 @@ class RunIdShape(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class StorageCheck(unittest.TestCase):
+    """A database that cannot be reached is reported by the setup check, never a crash."""
+
+    def test_missing_database_url_is_reported(self):
+        import checks
+        import store
+        from unittest import mock
+        with mock.patch.object(store, "STORE", store.PgStore()), mock.patch.dict(os.environ, {"DATABASE_URL": ""}):
+            result = checks.check_storage()
+        self.assertFalse(result["ok"])
+        self.assertIn("DATABASE_URL", result["detail"])
+
+    def test_files_are_fine_locally(self):
+        import checks
+        import store
+        from unittest import mock
+        with mock.patch.object(store, "STORE", store.FileStore()):
+            self.assertTrue(checks.check_storage()["ok"])

@@ -114,7 +114,9 @@ class Handler(SimpleHTTPRequestHandler):
         if self.path == "/api/logout":
             return self._json(200, {"ok": True}, cookie=auth.clear_cookie(secure=ON_VERCEL))
         if self.path == "/api/setup-check":  # POST only: it logs in to Gmail, so a stray link or image must not trigger it
-            return self._json(200, dict(checks.run_all(), estimate={"cost_per_company": runs.cost_per_company()}))
+            result = checks.run_all()  # the estimate reads the database, so it is skipped when storage is down
+            cost = runs.cost_per_company() if result["storage"]["ok"] else None
+            return self._json(200, dict(result, estimate={"cost_per_company": cost}))
         if self.path == "/api/step" and isinstance(data.get("run_id"), str):
             state, error = runs.step(data["run_id"])
             if error:

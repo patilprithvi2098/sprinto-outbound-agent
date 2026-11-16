@@ -13,7 +13,7 @@ for (const p of PAGES) {
   for (const w of WIDTHS) {
     test(`screenshot: ${p.name} at ${w}px`, async ({ page }) => {
       await page.setViewportSize({ width: w, height: 900 });
-      const setup = { claude: { ok: true, detail: "Key accepted." }, hunter: { ok: true, detail: "Key accepted.", searches_left: 43, searches_total: 50 }, gmail: { ok: true, detail: "Login accepted." } };
+      const setup = { claude: { ok: true, detail: "Key accepted." }, hunter: { ok: true, detail: "Key accepted.", searches_left: 43, searches_total: 50 }, gmail: { ok: true, detail: "Login accepted." }, storage: { ok: true, detail: "Connected." } };
       await page.route("**/api/setup-check", (r) => r.fulfill({ contentType: "application/json", body: JSON.stringify(setup) }));
       await page.route("**/api/quota", (r) => r.fulfill({ contentType: "application/json", body: JSON.stringify(setup.hunter) }));
     await page.route("**/api/feedback", (r) => r.fulfill({ contentType: "application/json", body: JSON.stringify({ ok: true, stored: 3, drafts_counted: 4, avg_disagreement: 0.25 }) }));
