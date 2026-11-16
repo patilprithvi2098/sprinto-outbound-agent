@@ -44,7 +44,11 @@ class Handler(SimpleHTTPRequestHandler):
         if not self.path.startswith("/api/") or self.path in OPEN_ROUTES or not auth.required():
             return True
         if not os.environ.get("APP_PASSWORD"):
-            self._json(503, {"error": "The app password is not set. Add APP_PASSWORD in the Vercel project settings."})
+            # names only, never values: says which Vercel environment this is and catches a misspelt name
+            near = [k for k in os.environ if k != "APP_PASSWORD" and k.strip().upper().replace("-", "_") == "APP_PASSWORD"]
+            self._json(503, {"error": "The app password is not set. Add APP_PASSWORD in the Vercel project settings.",
+                             "environment": os.environ.get("VERCEL_ENV"), "similar_names": near,
+                             "set_but_empty": "APP_PASSWORD" in os.environ})
             return False
         if auth.valid(self.headers.get("Cookie")):
             return True
