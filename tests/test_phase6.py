@@ -221,3 +221,19 @@ class StorageCheck(unittest.TestCase):
         from unittest import mock
         with mock.patch.object(store, "STORE", store.FileStore()):
             self.assertTrue(checks.check_storage()["ok"])
+
+
+class CrashIsExplained(unittest.TestCase):
+    def test_a_failing_route_answers_in_json(self):
+        import io
+        from unittest import mock
+        import wsgi
+        env = {"REQUEST_METHOD": "GET", "PATH_INFO": "/api/runs/latest", "HTTP_HOST": "127.0.0.1:8321",
+               "wsgi.input": io.BytesIO(b""), "CONTENT_LENGTH": ""}
+        got = {}
+        with mock.patch.object(runs, "latest", side_effect=RuntimeError("boom")), \
+                mock.patch.object(server.auth, "required", return_value=False), mock.patch("traceback.print_exc"):
+            body = b"".join(wsgi.app(env, lambda status, headers: got.update(status=status)))
+        self.assertTrue(got["status"].startswith("500"))
+        self.assertIn("RuntimeError", json.loads(body)["error"])
+        self.assertNotIn("boom", body.decode())

@@ -2,7 +2,9 @@
 (Not named server.py: Vercel would take app/server.py as the app entrypoint; the entrypoint is wsgi.py at the top.)"""
 import json
 import os
+import socket
 import time
+import traceback
 from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -73,7 +75,25 @@ class Handler(SimpleHTTPRequestHandler):
         self.send_header("Content-Security-Policy", "frame-ancestors 'none'")
         super().end_headers()
 
+    def _safely(self, work):
+        """An unexpected failure is answered in words, so the screen never has to say the app is not responding."""
+        try:
+            work()
+        except (socket.timeout, ConnectionError):  # the client stalled or left: nobody to answer
+            raise
+        except Exception as e:
+            traceback.print_exc()  # full detail in the server log only
+            storage = checks.check_storage()
+            why = "Storage: " + storage["detail"] if not storage["ok"] else "The app hit an error (%s). Try again." % type(e).__name__
+            self._json(500, {"error": why})
+
     def do_GET(self):
+        self._safely(self._get)
+
+    def do_POST(self):
+        self._safely(self._post)
+
+    def _get(self):
         if not self._trusted() or not self._signed_in():
             return
         if self.path == "/api/quota":  # Hunter only: the Review screen should not log in to Gmail on every load
@@ -86,7 +106,7 @@ class Handler(SimpleHTTPRequestHandler):
             return self._json(404, {"error": "Not found."})
         super().do_GET()
 
-    def do_POST(self):
+    def _post(self):
         if not self._trusted() or not self._signed_in():
             return
         # JSON only: another website cannot send this content type here without a preflight we never answer.
