@@ -49,7 +49,8 @@ Without `APP_PASSWORD`, the local app is open on 127.0.0.1 only. A terminal run 
    - `DATABASE_URL`
    - `APP_PASSWORD`: a password you choose and share with whoever should use the site
 3. Create the tables once in your Neon database (`db/schema.sql`).
-4. Deploy.
+4. Deploy. Variables added later only reach the next deployment, so redeploy after changing one.
+5. Sign in and run the setup check: Claude API, Hunter, Gmail and Storage should each say working. A failing row says what is wrong.
 
 On Vercel, each company is researched in its own request, within the 5-minute function limit. The Review page drives the run, so keep it open while a run is going.
 
