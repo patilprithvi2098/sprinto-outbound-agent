@@ -120,7 +120,12 @@ def check_storage():
     except Exception as e:  # the type only: a driver message can carry the connection string
         if not os.environ.get("DATABASE_URL"):
             return _result(False, "Not set. Add DATABASE_URL in the Vercel project settings.")
-        return _result(False, "Could not use the database (%s). Check DATABASE_URL and that db/schema.sql was run." % type(e).__name__)
+        import traceback
+        last = traceback.extract_tb(e.__traceback__)[-1]  # where it failed: a file name and line, no values
+        where = "%s:%d" % (os.path.basename(last.filename), last.lineno)
+        note = " %s" % e if isinstance(e, AttributeError) else ""  # names an attribute, never a credential
+        return _result(False, "Could not use the database (%s at %s%s). Check DATABASE_URL and that db/schema.sql was run."
+                       % (type(e).__name__, where, note))
     return _result(True, "Connected.")
 
 
