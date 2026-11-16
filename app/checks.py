@@ -115,6 +115,7 @@ def check_storage():
         return _result(True, "Saved in files on this computer.")
     try:
         store.STORE.records()
+        saved = len(store.STORE.run_ids())
     except ImportError:
         return _result(False, "The database driver is missing. Install requirements.txt.")
     except Exception as e:  # the type only: a driver message can carry the connection string
@@ -126,7 +127,9 @@ def check_storage():
         note = " %s" % e if isinstance(e, AttributeError) else ""  # names an attribute, never a credential
         return _result(False, "Could not use the database (%s at %s%s). Check DATABASE_URL and that db/schema.sql was run."
                        % (type(e).__name__, where, note))
-    return _result(True, "Connected.")
+    from urllib.parse import urlparse
+    host = (urlparse(os.environ.get("DATABASE_URL") or "").hostname or "").split(".")[0]  # which database, no login details
+    return _result(True, "Connected to %s. %d %s saved." % (host, saved, "run" if saved == 1 else "runs"))
 
 
 def run_all():
