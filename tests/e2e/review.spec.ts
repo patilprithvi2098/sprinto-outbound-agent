@@ -416,12 +416,12 @@ test("a sent draft can be edited and sent again as a new version", async ({ page
   await expect(d.getByLabel("Email")).toHaveValue("Hi Ines,\n\nShorter.\n");
 });
 
-test("the flow shows each stage with who stopped where, and the feedback loop's figures", async ({ page }) => {
+test("the flow shows each stage with who stopped where, and no feedback loop box", async ({ page }) => {
   await open(page);
   const flow = page.locator("#flow");
   await expect(flow.locator(".stage .label").filter({ hasNotText: "Stopped" })).toHaveText(["Pasted", "Pages read", "Qualified", "Person found", "Draft ready", "You reviewed"]);
   await expect(flow.locator(".stage .count")).toHaveText(["4", "3", "1", "1", "1", "0"]);
-  await expect(flow.locator(".loop")).toContainText("3 corrections saved");
+  await expect(flow.locator(".loop")).toHaveCount(0); // removed at the operator's request; the figure stays in Average disagreement
   await flow.locator(".stop").filter({ hasText: "Fernpay" }).click();
   await expect(item(page, "Fernpay")).toHaveAttribute("aria-pressed", "true"); // opened below (on a phone the card names it, not a heading)
 });

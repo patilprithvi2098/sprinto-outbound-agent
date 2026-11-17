@@ -11,7 +11,7 @@
   ];
   const narrow = window.matchMedia("(max-width: 820px)");
   const calm = window.matchMedia("(prefers-reduced-motion: no-preference)");
-  let run = null, selected = null, seen = {}, shownDetail = "", fb = null; // fb: the feedback loop's figures
+  let run = null, selected = null, seen = {}, shownDetail = "";
   let openGroups = {}, mapOpen = false, ccPick = {}, reopened = new Set(); // reopened: sent drafts the operator chose to edit again // what the operator opened or ticked survives a redraw
 
   const shown = s => (s === "Sent to me" ? "Sent" : s); // the operator asked for the words "to me" to go; the note under the draft still says where it went
@@ -128,8 +128,7 @@
     else $("detail").scrollIntoView({ block: "nearest", behavior: calm.matches ? "smooth" : "auto" });
   }
 
-  // The flow: every stage a company passes, an arrow between stages, who stopped where and why,
-  // and the feedback loop: what you change in a draft goes back into how the next drafts are written.
+  // The flow: every stage a company passes, an arrow between stages, and who stopped where and why.
   function renderFlow() {
     const recs = run.records, n = recs.length, done = recs.filter(r => !r.pending);
     const opened = r => !!r.fields || (r.pages_fetched || []).some(pg => pg.ok);
@@ -147,15 +146,8 @@
     ];
     const cut = t => (t.length > 70 ? t.slice(0, 69) + "…" : t);
     const stop = r => `<button type="button" class="stop" data-domain="${esc(r.domain)}" title="${esc(r.reason || "")}"><b>${esc(r.name || r.domain)}</b> ${esc(cut(r.reason || ""))}</button>`;
-    const used = drafted.filter(r => ((r.feedback_loop || {}).corrections_used || []).length).length;
-    const edited = drafted.filter(r => rev(r).rewritten || rev(r).skipped).length;
-    const lines = !fb ? ["Reading the loop."] : !fb.ok ? [`Off: ${fb.detail}`] :
-      [`${edited} ${edited === 1 ? "draft" : "drafts"} changed by you here`, `${fb.stored} ${fb.stored === 1 ? "correction" : "corrections"} saved`,
-       `Used in ${used} of ${drafted.length} drafts here`, ...(fb.avg_disagreement === null ? [] : [`You change ${Math.round(fb.avg_disagreement * 100)}% on average`])];
     $("flow").innerHTML = `<div class="flow">` +
-      `<div class="loop${fb && !fb.ok ? " off" : ""}"><svg viewBox="0 0 100 40" preserveAspectRatio="none" aria-hidden="true"><path d="M87.5 40 V9 Q87.5 3 84.5 3 H65.5 Q62.5 3 62.5 9 V38" vector-effect="non-scaling-stroke"/></svg>` +
-      `<span class="loop-head" aria-hidden="true"></span><p><b>Feedback loop</b>${lines.map(l => `<span>${esc(l)}</span>`).join("")}</p></div>` +
-      stages.map(([label, count, note, stopped], i) => `<div class="stage${i === 4 ? " learns" : ""}" style="--i:${i}"><p class="label">${label}</p><b class="mono count">${count}</b><p class="hint">${esc(note)}</p>` +
+      stages.map(([label, count, note, stopped], i) => `<div class="stage" style="--i:${i}"><p class="label">${label}</p><b class="mono count">${count}</b><p class="hint">${esc(note)}</p>` +
         (stopped.length ? `<div class="stops"><p class="label">Stopped here <span class="mono">${stopped.length}</span></p>${stopped.map(stop).join("")}</div>` : "") + `</div>`).join("") +
       `</div>`;
     $("flow").querySelectorAll("[data-domain]").forEach(b => b.addEventListener("click", () => go(b.dataset.domain)));
@@ -436,8 +428,6 @@
       $("c-disagree-note").textContent = f.drafts_counted ? `last ${f.drafts_counted} ${f.drafts_counted === 1 ? "draft" : "drafts"}` : "no drafts acted on yet";
       $("loop-off").textContent = f.ok ? "" : f.detail;
       $("loop-off").hidden = f.ok;
-      fb = f;
-      if (run) renderFlow();
     } catch (e) { /* the figure stays "-" */ }
   }
 
