@@ -301,15 +301,13 @@ button.node { cursor: pointer; } button.node:hover { border-color: var(--seconda
 
 /* ---- Flow with arrows (replaces the funnel) ---- */
 .board { grid-template-columns: 1fr; }
-.flow { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); column-gap: var(--s5); row-gap: 0; }
+.flow { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); column-gap: var(--s5); row-gap: 0; align-items: start; }
 .stage { position: relative; padding: var(--s3); background: var(--surface-2); border-radius: var(--radius); display: grid; gap: var(--s1); align-content: start; min-width: 0; }
 .stage .count { font-size: 32px; line-height: 1.1; font-weight: 500; }
 .stage + .stage::before { content: ""; position: absolute; top: 40px; left: calc(var(--s5) * -1 + 3px); width: calc(var(--s5) - 10px); height: 2px; background: var(--secondary); }
 .stage + .stage::after { content: ""; position: absolute; top: 35px; left: -9px; border-top: 6px solid transparent; border-bottom: 6px solid transparent; border-left: 8px solid var(--secondary); }
-.stops { display: grid; gap: var(--s1); margin-top: var(--s2); padding-top: var(--s2); border-top: 1px dashed var(--border); }
-.stop { font: 13px/1.4 var(--font); color: var(--text-muted); text-align: left; cursor: pointer; padding: var(--s1) var(--s2);
-  background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); overflow-wrap: anywhere; }
-.stop b { color: var(--text); font-weight: 600; } .stop:hover { border-color: var(--secondary); }
+.lost { font-size: 13px; color: var(--text-muted); margin-top: var(--s1); text-decoration: underline; text-underline-offset: 3px; }
+.lost:hover { color: var(--text); }
 @media (max-width: 1024px) { .flow { column-gap: var(--s4); } .stage .count { font-size: 24px; } }
 @media (max-width: 820px) {
   .flow { grid-template-columns: 1fr; row-gap: var(--s5); }
@@ -318,7 +316,6 @@ button.node { cursor: pointer; } button.node:hover { border-color: var(--seconda
 }
 @media (prefers-reduced-motion: no-preference) {
   .stage { animation: rise .4s ease-out both; animation-delay: calc(var(--i) * 80ms); }
-  .stop { transition: border-color .15s; }
 }
 
 /* ---- Title with Find companies now ---- */

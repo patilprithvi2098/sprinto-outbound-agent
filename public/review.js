@@ -181,13 +181,11 @@
       ["Draft ready", drafted.length, "every sentence checked against the site", found.filter(r => !ready(r))],
       ["You reviewed", sent.length + skipped.length, `${sent.length} sent, ${skipped.length} skipped, ${waiting} waiting`, []],
     ];
-    const cut = t => (t.length > 70 ? t.slice(0, 69) + "…" : t);
-    const stop = r => `<button type="button" class="stop" data-domain="${esc(r.domain)}" title="${esc(r.reason || "")}"><b>${esc(r.name || r.domain)}</b> ${esc(cut(r.reason || ""))}</button>`;
+    // only a count per stage: the names and reasons are in "Not selected, and why" right below
     $("flow").innerHTML = `<div class="flow">` +
       stages.map(([label, count, note, stopped], i) => `<div class="stage" style="--i:${i}"><p class="label">${label}</p><b class="mono count">${count}</b><p class="hint">${esc(note)}</p>` +
-        (stopped.length ? `<div class="stops"><p class="label">Stopped here <span class="mono">${stopped.length}</span></p>${stopped.map(stop).join("")}</div>` : "") + `</div>`).join("") +
+        (stopped.length ? `<a class="lost" href="#dive-list"><span class="mono">${stopped.length}</span> stopped here</a>` : "") + `</div>`).join("") +
       `</div>`;
-    $("flow").querySelectorAll("[data-domain]").forEach(b => b.addEventListener("click", () => go(b.dataset.domain)));
   }
 
   function renderList() {
