@@ -330,3 +330,17 @@ test("a note on a person is saved, and a ticked CC goes with the send", async ({
   expect(bodies[1]).toMatchObject({ action: "send", cc: ["omar@kestrelmetrics.io"] });
   await expect(detail(page).locator("#act-note")).toContainText("CC marked: 1; none of them were emailed.");
 });
+
+test("the reach map is a network: a company node shows who and why beside it, then opens the draft", async ({ page }) => {
+  await open(page);
+  const node = page.locator('#reach g.co[data-domain="kestrelmetrics.io"]');
+  await node.focus();
+  await page.keyboard.press("Enter");
+  await expect(node).toHaveAttribute("aria-pressed", "true");
+  const info = page.locator("#net-info");
+  await expect(info).toContainText("Ines Albrecht");
+  await expect(info).toContainText("Passing customer security reviews");
+  await info.getByRole("button", { name: "Open the draft" }).click();
+  await expect(detail(page).getByLabel("Subject")).toHaveValue("Frankfurt region and security reviews");
+  await expect(page.locator("#reach g.co")).toHaveCount(4); // every company in the run is on the map
+});

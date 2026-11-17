@@ -51,7 +51,7 @@
     requestAnimationFrame(tick);
   }
 
-  // The reach map: each person we wrote to sits in the lane of their role (config/icp.json role_priority, tier 1 to 4).
+  // Role groups in priority order (config/icp.json role_priority, tier 1 to 4).
   const LANES = ["Security, compliance or risk", "Engineering leadership", "Operations", "CEO or founder"];
   function renderBoard() {
     const recs = run.records, n = recs.length, done = recs.filter(r => !r.pending);
@@ -61,24 +61,56 @@
     $("funnel").innerHTML = steps.map(([label, v], i) => `<div><span>${label}</span><i class="${bars[i] === v ? "" : "grow"}" style="--w:${n ? v / n * 100 : 0}"></i><b class="mono">${v}</b></div>`).join("");
     bars = steps.map(x => x[1]);
     const fresh = d => (mapped.has(d) ? "" : " arrive");
+    // A network map, not a table: the run in the middle, a line to every company, and from each company to the people found there.
+    const W = 720, H = 480, cx = W / 2, cy = H / 2, R1 = 120, R2 = 185, rad = d => d * Math.PI / 180;
+    const pt = (deg, r) => [(cx + r * Math.cos(rad(deg))).toFixed(1), (cy + r * Math.sin(rad(deg))).toFixed(1)];
+    const step = 360 / Math.max(n, 1), fan = Math.min(16, step / 3.5);
+    const kind = r => (r.pending ? "wait" : reached.includes(r) ? "hit" : r.status === "Disqualified" ? "drop" : "flag");
+    const short = t => (t.length > 22 ? t.slice(0, 21) + "…" : t);
+    const nodes = recs.map((r, i) => {
+      const a = -90 + i * step, [x, y] = pt(a, R1), cos = Math.cos(rad(a)), sin = Math.sin(rad(a));
+      const people = r.contact ? [r.contact, ...(r.others || []).slice(0, 3)] : [];
+      const ppl = people.map((p, j) => { const [px, py] = pt(a + (j - (people.length - 1) / 2) * fan, R2);
+        return `<line class="edge" x1="${x}" y1="${y}" x2="${px}" y2="${py}"/><circle class="pnode${j ? "" : " to"}" cx="${px}" cy="${py}" r="${j ? 5 : 8}"><title>${esc(p.name)}, ${esc(p.position || "no title")}${j ? "" : " (written to)"}</title></circle>`; }).join("");
+      const [lx, ly] = pt(a, (people.length ? R2 : R1) + 18);
+      const label = `<text x="${lx}" y="${ly}" dy="${sin > .3 ? 10 : sin < -.3 ? (r.contact ? -16 : -2) : 4}" text-anchor="${cos > .3 ? "start" : cos < -.3 ? "end" : "middle"}">${esc(short(r.name || r.domain))}` +
+        (r.contact ? ` <tspan class="sub" x="${lx}" dy="15">${esc(short(r.contact.name))}</tspan>` : "") + `</text>`;
+      return `<g class="co ${kind(r)}${fresh(r.domain)}" data-domain="${esc(r.domain)}" role="button" tabindex="0" aria-pressed="${r.domain === selected}" ` +
+        `aria-label="${esc(short(r.name || r.domain))}${r.contact ? " " + esc(short(r.contact.name)) : ""}, ${esc(r.status)}"><line class="edge" x1="${cx}" y1="${cy}" x2="${x}" y2="${y}"/>${ppl}` +
+        `<circle class="halo" cx="${x}" cy="${y}" r="13"/><circle class="cnode" cx="${x}" cy="${y}" r="${kind(r) === "hit" ? 12 : 8}"/>${label}</g>`;
+    }).join("");
     const who = r => `<button type="button" class="who${fresh(r.domain)}" data-domain="${esc(r.domain)}" aria-pressed="${r.domain === selected}">` +
-      `<span class="who-co mono">${esc(r.name || r.domain)} · ${esc(r.domain)}</span>` +
-      `<span class="who-name">${esc(r.contact.name)} <span class="mono">${esc(r.contact.position)}</span>${chip(r.status)}</span>` +
-      (r.draft.role_measured_on ? `<span class="who-about">${esc(r.draft.role_measured_on)}</span>` : "") +
-      ((r.fields || {}).trigger ? `<span class="who-why">Why now: ${esc(r.fields.trigger)}</span>` : "") + `</button>`;
-    const lane = r => Math.min(Math.max(r.contact.role_tier || 4, 1), 4) - 1;
-    const missed = done.filter(r => !reached.includes(r));
-    $("reach").innerHTML = `<div class="lanes">` + LANES.map((label, i) => {
-      const people = reached.filter(r => lane(r) === i);
-      return `<div class="lane"><p class="label">Priority ${i + 1} · <b>${label}</b></p>${people.map(who).join("") || `<p class="none">No one reached in this role.</p>`}</div>`;
-    }).join("") + `</div>` + (missed.length ? `<p class="label sub">Not reached, and why <span class="mono">${missed.length}</span></p><div class="missed">` +
-      missed.map(r => `<button type="button" class="miss${fresh(r.domain)}" data-domain="${esc(r.domain)}" aria-pressed="${r.domain === selected}" title="${esc(r.reason || "")}"><b>${esc(r.name || r.domain)}</b> ${esc(r.reason || "")}</button>`).join("") + `</div>` : "");
+      `<span class="who-name">${esc(r.contact.name)} <span class="mono">${esc(r.contact.position)}</span></span>` +
+      `<span class="who-co"><span class="mono">${esc(r.name || r.domain)}</span>${chip(r.status)}</span></button>`;
+    const ranked = [...reached].sort((p, q) => (p.contact.role_tier || 9) - (q.contact.role_tier || 9));
+    const key = [["hit", "Reached"], ["flag", "Needs you"], ["drop", "Dropped"], ["wait", "Researching"]].filter(k => recs.some(r => kind(r) === k[0]));
+    $("reach").innerHTML = `<div class="netwrap"><div><svg class="net" viewBox="0 0 ${W} ${H}" role="group" aria-label="Map of this run: every company, and the people found there">${nodes}` +
+      `<circle class="hub" cx="${cx}" cy="${cy}" r="22"/><text class="hubt" x="${cx}" y="${cy + 4}" text-anchor="middle">Run</text></svg>` +
+      `<p class="legend">${key.map(k => `<span><svg viewBox="0 0 12 12" aria-hidden="true"><circle class="cnode ${k[0]}" cx="6" cy="6" r="5"/></svg>${k[1]}</span>`).join("")}` +
+      `<span><svg viewBox="0 0 12 12" aria-hidden="true"><circle class="pnode to" cx="6" cy="6" r="4"/></svg>Written to</span><span><svg viewBox="0 0 12 12" aria-hidden="true"><circle class="pnode" cx="6" cy="6" r="4"/></svg>Also found</span></p></div>` +
+      `<div class="netside"><div id="net-info" aria-live="polite"></div>` +
+      (ranked.length ? `<p class="label sub">People reached, by role priority <span class="mono">${ranked.length}</span></p>${ranked.map(who).join("")}` : `<p class="none">No one reached yet in this run.</p>`) + `</div></div>`;
     done.forEach(r => mapped.add(r.domain));
-    $("reach").querySelectorAll("[data-domain]").forEach(b => b.addEventListener("click", () => {
-      mapOpen = true; // coming from the reach map, the company opens on its people map
-      select(b.dataset.domain, true);
-      $("detail").scrollIntoView({ block: "nearest", behavior: calm.matches ? "smooth" : "auto" });
-    }));
+    const go = d => { mapOpen = true; select(d, true); $("detail").scrollIntoView({ block: "nearest", behavior: calm.matches ? "smooth" : "auto" }); };
+    $("reach").querySelectorAll(".who").forEach(b => b.addEventListener("click", () => go(b.dataset.domain))); // a person opens their company on its people map
+    $("reach").querySelectorAll("g.co").forEach(g => { // a node only selects: what it is shows beside the map
+      g.addEventListener("click", () => select(g.dataset.domain, false));
+      g.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); select(g.dataset.domain, false); } });
+    });
+    $("net-info").addEventListener("click", e => { if (e.target.closest("[data-open]")) go(selected); });
+    markReach();
+  }
+
+  function markReach() { // the chosen company is ringed on the map and described beside it
+    document.querySelectorAll("#reach [data-domain]").forEach(b => b.setAttribute("aria-pressed", b.dataset.domain === selected));
+    const r = run.records.find(x => x.domain === selected), box = $("net-info");
+    if (!box || !r) return;
+    const c = r.contact, more = (r.others || []).length;
+    box.innerHTML = `<h3>${esc(r.name || r.domain)} ${chip(r.status)}</h3><p class="mono muted">${esc(r.domain)}</p>` +
+      (c && r.draft && r.draft.body ? `<p><b>${esc(c.name)}</b>, ${esc(c.position)}</p>` + (r.draft.role_measured_on ? `<p>${esc(r.draft.role_measured_on)}</p>` : "") +
+        ((r.fields || {}).trigger ? `<p class="muted">Why now: ${esc(r.fields.trigger)}</p>` : "") + (more ? `<p class="muted">${more} more ${more === 1 ? "person" : "people"} found here.</p>` : "")
+        : `<p>${esc(why(r))}</p>`) +
+      `<button type="button" class="btn" data-open>${ready(r) ? "Open the draft" : "Open this company"}</button>`;
   }
 
   function renderList() {
@@ -225,7 +257,7 @@
   function select(domain, user) {
     selected = domain;
     renderList();
-    document.querySelectorAll("#reach [data-domain]").forEach(b => b.setAttribute("aria-pressed", b.dataset.domain === selected));
+    markReach();
     renderDetail(true);
     if (user && narrow.matches) $("detail").scrollIntoView({ block: "nearest" });
   }
