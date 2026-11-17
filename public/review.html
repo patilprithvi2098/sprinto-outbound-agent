@@ -6,7 +6,7 @@
 <title>Review · Sprinto outbound</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Familjen+Grotesk:wght@400;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -35,12 +35,17 @@
     <p class="muted" id="run-meta"></p>
     <dl class="counts">
       <div><dt class="label">Need you</dt><dd class="mono key" id="c-need">0</dd></div>
-      <div><dt class="label">Drafts ready</dt><dd class="mono" id="c-ready">0</dd></div>
-      <div><dt class="label">Dropped</dt><dd class="mono" id="c-dropped">0</dd></div>
-      <div><dt class="label">Hunter searches left</dt><dd class="mono" id="c-hunter">-</dd></div>
-      <div><dt class="label">Average disagreement</dt><dd class="mono" id="c-disagree">-</dd><dd class="hint" id="c-disagree-note"></dd></div>
+      <div style="--i:1"><dt class="label">Drafts ready</dt><dd class="mono" id="c-ready">0</dd></div>
+      <div style="--i:2"><dt class="label">Sent to me</dt><dd class="mono" id="c-sent">0</dd></div>
+      <div style="--i:3"><dt class="label">Dropped</dt><dd class="mono" id="c-dropped">0</dd></div>
+      <div style="--i:4"><dt class="label">Hunter searches left</dt><dd class="mono" id="c-hunter">-</dd></div>
+      <div style="--i:5"><dt class="label">Average disagreement</dt><dd class="mono" id="c-disagree">-</dd><dd class="hint" id="c-disagree-note"></dd></div>
     </dl>
     <p class="notice" id="loop-off" role="status" hidden></p>
+    <div class="board">
+      <section class="panel" style="--i:6" aria-labelledby="funnel-h"><h2 id="funnel-h">Where the domains went</h2><div class="funnel" id="funnel"></div></section>
+      <section class="panel" style="--i:7" aria-labelledby="reach-h"><h2 id="reach-h">Who we reached, and why</h2><div id="reach"></div></section>
+    </div>
     <div class="desk">
       <div class="list" id="list" role="region" aria-label="Companies in this run" tabindex="0"></div>
       <section class="detail" id="detail" aria-label="Selected company"></section>

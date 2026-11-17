@@ -10,7 +10,8 @@
     { name: "Dropped with reason", test: r => r.status === "Disqualified" },
   ];
   const narrow = window.matchMedia("(max-width: 820px)");
-  let run = null, selected = null, seen = {}, shownDetail = "";
+  const calm = window.matchMedia("(prefers-reduced-motion: no-preference)");
+  let run = null, selected = null, seen = {}, shownDetail = "", bars = [], mapped = new Set();
 
   const chip = s => `<span class="chip ${TONE[s]}"><svg aria-hidden="true"><use href="#i-${ICON[s]}"/></svg>${esc(s)}</span>`;
   const path = url => { try { return new URL(url).pathname; } catch (e) { return ""; } };
@@ -36,9 +37,47 @@
     } else when += `. Researching: ${done} of ${n} done`;
     $("run-meta").textContent = `${when}. Hunter searches used: ${run.hunter_searches_used}.` +
       (run.corrections_paused ? " Your corrections were not applied to this run: more than half of the last run's drafts were skipped." : "");
-    $("c-need").textContent = recs.filter(r => r.status === "Flagged").length;
-    $("c-ready").textContent = recs.filter(r => ["Qualified", "Sent to me", "Rewritten"].includes(r.status)).length;
-    $("c-dropped").textContent = recs.filter(r => r.status === "Disqualified").length;
+    count("c-need", recs.filter(r => r.status === "Flagged").length);
+    count("c-ready", recs.filter(r => ["Qualified", "Sent to me", "Rewritten"].includes(r.status)).length);
+    count("c-sent", recs.filter(r => (r.review || {}).sent_at).length);
+    count("c-dropped", recs.filter(r => r.status === "Disqualified").length);
+  }
+
+  function count(id, to) { // a changed number counts up to its new value, so the eye is drawn to what moved
+    const el = $(id), from = +el.textContent || 0;
+    if (from === to || !calm.matches) { el.textContent = to; return; }
+    const t0 = performance.now();
+    const tick = t => { const k = Math.min(1, (t - t0) / 500); el.textContent = Math.round(from + (to - from) * k); if (k < 1) requestAnimationFrame(tick); };
+    requestAnimationFrame(tick);
+  }
+
+  // The reach map: each person we wrote to sits in the lane of their role (config/icp.json role_priority, tier 1 to 4).
+  const LANES = ["Security, compliance or risk", "Engineering leadership", "Operations", "CEO or founder"];
+  function renderBoard() {
+    const recs = run.records, n = recs.length, done = recs.filter(r => !r.pending);
+    const reached = done.filter(r => r.contact && r.draft && r.draft.body);
+    const steps = [["Pasted", n], ["Researched", done.length], ["Qualified", done.filter(r => r.verdict === "qualified" || r.contact).length],
+      ["Contact found", done.filter(r => r.contact).length], ["Drafted", reached.length], ["Sent to me", done.filter(r => (r.review || {}).sent_at).length]];
+    $("funnel").innerHTML = steps.map(([label, v], i) => `<div><span>${label}</span><i class="${bars[i] === v ? "" : "grow"}" style="--w:${n ? v / n * 100 : 0}"></i><b class="mono">${v}</b></div>`).join("");
+    bars = steps.map(x => x[1]);
+    const fresh = d => (mapped.has(d) ? "" : " arrive");
+    const who = r => `<button type="button" class="who${fresh(r.domain)}" data-domain="${esc(r.domain)}" aria-pressed="${r.domain === selected}">` +
+      `<span class="who-co mono">${esc(r.name || r.domain)} · ${esc(r.domain)}</span>` +
+      `<span class="who-name">${esc(r.contact.name)} <span class="mono">${esc(r.contact.position)}</span>${chip(r.status)}</span>` +
+      (r.draft.role_measured_on ? `<span class="who-about">${esc(r.draft.role_measured_on)}</span>` : "") +
+      ((r.fields || {}).trigger ? `<span class="who-why">Why now: ${esc(r.fields.trigger)}</span>` : "") + `</button>`;
+    const lane = r => Math.min(Math.max(r.contact.role_tier || 4, 1), 4) - 1;
+    const missed = done.filter(r => !reached.includes(r));
+    $("reach").innerHTML = `<div class="lanes">` + LANES.map((label, i) => {
+      const people = reached.filter(r => lane(r) === i);
+      return `<div class="lane"><p class="label">Priority ${i + 1} · <b>${label}</b></p>${people.map(who).join("") || `<p class="none">No one reached in this role.</p>`}</div>`;
+    }).join("") + `</div>` + (missed.length ? `<p class="label sub">Not reached, and why <span class="mono">${missed.length}</span></p><div class="missed">` +
+      missed.map(r => `<button type="button" class="miss${fresh(r.domain)}" data-domain="${esc(r.domain)}" aria-pressed="${r.domain === selected}" title="${esc(r.reason || "")}"><b>${esc(r.name || r.domain)}</b> ${esc(r.reason || "")}</button>`).join("") + `</div>` : "");
+    done.forEach(r => mapped.add(r.domain));
+    $("reach").querySelectorAll("[data-domain]").forEach(b => b.addEventListener("click", () => {
+      select(b.dataset.domain, true);
+      $("detail").scrollIntoView({ block: "nearest", behavior: calm.matches ? "smooth" : "auto" });
+    }));
   }
 
   function renderList() {
@@ -146,6 +185,7 @@
   function select(domain, user) {
     selected = domain;
     renderList();
+    document.querySelectorAll("#reach [data-domain]").forEach(b => b.setAttribute("aria-pressed", b.dataset.domain === selected));
     renderDetail(true);
     if (user && narrow.matches) $("detail").scrollIntoView({ block: "nearest" });
   }
@@ -175,7 +215,7 @@
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "That did not work. Try again.");
       run.records[run.records.findIndex(x => x.domain === r.domain)] = data.record;
-      renderHeader(); renderList(); renderDetail(true); loop();
+      renderHeader(); renderBoard(); renderList(); renderDetail(true); loop();
     } catch (e) {
       err.textContent = e.message.startsWith("Failed") ? "The app is not responding. Check that the server is still running." : e.message;
       err.hidden = false;
@@ -194,7 +234,7 @@
     run = newRun;
     $("run").hidden = false;
     if (!selected || !run.records.some(r => r.domain === selected)) selected = defaultSelection();
-    renderHeader(); renderList(); renderDetail(false);
+    renderHeader(); renderBoard(); renderList(); renderDetail(false);
   }
 
   async function load() {

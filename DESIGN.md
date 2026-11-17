@@ -1,34 +1,37 @@
 # DESIGN.md: Sprinto outbound agent
-Chosen direction: B (split desk), agreed 2026-11-11. Feel: A Growth Lead checks this between calls. It must feel calm and dense, read like a clean worksheet, and make it impossible to confuse a flagged company with a ready one. Nothing playful.
+Chosen direction: C (Frost board), agreed 2026-11-17, replacing B (split desk, cream) from 2026-11-11. Feel: a Growth Lead opens this to see the whole week at a glance: how many domains went where, who was reached and why, then the drafts. It must read as a working dashboard, calm and dense, and make it impossible to confuse a flagged company with a ready one.
 
 ## Colour tokens (CSS variables)
---surface: #F3EEE3; --surface-2: #EAE3D3; --text: #111111; --text-muted: #5a5448;
---secondary: #111111; --accent: #E2622A; --on-accent: #111111; --accent-text: #9a3d12;
---success: #2d5a1f; --success-bg: #dde8d3;
---warning: #6e4800; --warning-bg: #f2e2b8;
---danger: #8e2f12; --danger-bg: #f1d6cb;
---info: #3b4a52; --info-bg: #e0e2dc;
---border: #d6cdb8;
-Roles: 60% surface (cream), 30% secondary (ink: header rule, headings, selected-row border), 10% accent (burnt orange).
-Accent only on: the primary button ("Send to my inbox", "Open for manual review") and the one number that matters (the "need you" count, set in --accent-text). Never on body text.
-Contrast checked: text on surface 16.3:1; text-muted on surface 6.5:1; text-muted on surface-2 5.9:1; text on surface-2 14.8:1; on-accent on accent 5.4:1; accent-text on surface 6.0:1; accent on surface 3.0:1 (icons and large shapes only, never small text); status pairs: success 6.4:1, warning 6.3:1, danger 5.9:1, info 7.0:1.
+--surface: #f7f9fa; --surface-2: #ecf0f2; --card: #ffffff; --text: #1f3038; --text-muted: #5d6b72;
+--secondary: #1f3038; --accent: #0d7480; --on-accent: #ffffff; --accent-text: #0d7480;
+--success: #1d5a33; --success-bg: #dcefe2;
+--warning: #6b4a00; --warning-bg: #f6e7bd;
+--danger: #8a2a1c; --danger-bg: #f6dcd6;
+--info: #2f4a5a; --info-bg: #e2eaee;
+--border: #dbe2e6; --bar: #9fb4bd;
+Roles: 60% surface (cool white page, white cards), 30% secondary (dark slate: text, selected borders, the hover fill on buttons), 10% accent (teal).
+Accent only on: the primary button ("Send to my inbox", "Open for manual review"), the one number that matters (the "need you" count) and the last bar of the funnel ("Sent to me"). Never on body text.
+Contrast checked: text on surface 12.9:1; text-muted on surface 5.2:1, on card 5.5:1, on surface-2 4.8:1; on-accent on accent 5.5:1; accent on card 5.5:1; status pairs: success 6.8:1, warning 6.6:1, danger 6.6:1, info 7.7:1.
 
 ## Type
-Headings: Familjen Grotesk, weights 400 and 600. Body: Familjen Grotesk 400. Numbers and domains: IBM Plex Mono 400/500 with tabular figures.
-Scale: 12 / 13 / 14 / 15 / 17 / 20 / 24 / 32. Email body 17 px; evidence 14 px; labels 12 px uppercase with 0.04em tracking.
+Headings and body: Instrument Sans, weights 400 and 600. Numbers and domains: DM Mono 400/500 with tabular figures.
+Scale: 12 / 13 / 14 / 15 / 17 / 20 / 24 / 32. Email body 17 px; evidence 14 px; labels 12 px uppercase with 0.04em tracking; dashboard numbers 32 px (24 px on phone).
 Line length: 62ch maximum for email and evidence text.
 
 ## Layout and shape
-Grid: two columns on desktop (list about 1fr, detail about 2fr); single column below 820 px. Spacing scale: 4 / 8 / 12 / 16 / 24 / 32. Radius: 10 px everywhere. Borders over shadows; no shadows. Density: comfortable.
+Review is a dashboard, top to bottom: six number cards; a row with the funnel (about 1fr) beside the reach map (about 2.6fr); then the desk (list about 1fr, detail about 2fr). Single column below 820 px; number cards go 6, then 3, then 2 across. Spacing scale: 4 / 8 / 12 / 16 / 24 / 32. Radius: 8 px everywhere. White cards with a 1 px border; no shadows except the primary button's pulse ring. Density: comfortable.
 Breakpoints: phone < 640, tablet < 1024, desktop.
-Within the detail, no card inside a card: the draft is separated by a 2 px ink rule, not a box.
-On desktop the Review list scrolls on its own beside the detail (sticky, like a mail client), so a long run never pushes the detail out of view (added in Phase 3 after the detector flagged a column running far past the fold).
+Within the detail, the draft is separated by a 2 px slate rule, not another box.
+On desktop the Review list scrolls on its own beside the detail (sticky, like a mail client).
 
 ## Screens
 **1. Run.** Opened Monday morning to answer "which domains do I run this week?". Fields: domain box (paste 8-15), domain count, Hunter searches left this month (X of the plan total, read live; 50 on this account), cost estimate. Actions: Run, Clear. Empty: placeholder showing one example domain. Error: invalid domains listed inline with the reason. Phone: single column, Run button full width. Never hunt for: the Hunter quota.
 
 **2. Review (first screen).** Opened when the run finishes, to answer "do I trust this company, this person and this email enough to send?".
 - Header: "Run of N domains", run time, Hunter searches left, and three counts (need you, drafts ready, dropped).
+- Number cards: need you, drafts ready, sent to me, dropped, Hunter searches left, average disagreement.
+- Funnel "Where the domains went": pasted, researched, qualified, contact found, drafted, sent to me; one bar and one count each.
+- Reach map "Who we reached, and why": four lanes, one per role priority (security, compliance or risk; engineering leadership; operations; CEO or founder). Each person we wrote to is a card in their lane: company and domain, name, title, status, one line on what the role is measured on, and "Why now" with the trigger. Under the lanes, "Not reached, and why" lists every other company with its reason. Clicking a person or a company opens it in the desk below. Only the chosen contact is shown; other people Hunter found are not stored.
 - Left list grouped as Needs you, Drafts to review, Dropped with reason. Each item: company, one-line why with source page, status chip.
 - Detail on the right: company, domain, status; then the draft (subject, body) with Send to my inbox, I rewrote it, Skip; then evidence: why this company, why this person, two pains, what this role is measured on, trace line (N of M sentences from the pack, generic, made up, banned).
 - Feedback loop (Phase 4): the draft's subject and body are editable in place, with an optional one-line "Why did you change it?" field under them. An edited draft that is sent becomes Rewritten automatically, so the "I rewrote it" button is only for edits made outside the app. The header gains one more figure: average disagreement over the last 10 drafts.
@@ -39,16 +42,18 @@ On desktop the Review list scrolls on its own beside the detail (sticky, like a 
 
 ## Motion
 1. A row arriving during a run: 200 ms fade plus 6 px rise. Reduced motion: appears instantly.
-2. A status changing (for example Qualified to Sent to me): 250 ms chip cross-fade plus a brief background tint on the row. Reduced motion: chip swaps instantly, tint holds for 1 s.
+2. A status changing: 250 ms chip cross-fade plus a brief background tint on the row. Reduced motion: chip swaps instantly, tint holds for 1 s.
 3. The detail panel opening: 180 ms fade. Reduced motion: appears instantly.
-All three are plain CSS: no library, no licence or attribution. Wrap in `@media (prefers-reduced-motion: no-preference)`.
+4. Dashboard arriving: number cards and panels rise 10 px over 400 ms, staggered 60 ms; a number that changes counts to its new value in 500 ms; a funnel bar that changes grows from the left in 600 ms; a new person on the map rises in. Movement only, never a fade, so text keeps its contrast the whole time. Reduced motion: everything is in place at once.
+5. Buttons: on hover or keyboard focus a slate fill sweeps in from the left (250 ms) and the label turns white; pressing scales to 97%. The primary button pulses a teal ring three times when it appears, then rests. Map cards lift 2 px on hover. Reduced motion: colours change without movement, no pulse.
+All plain CSS plus one small counter in `review.js`: no library, no licence or attribution. Wrap in `@media (prefers-reduced-motion: no-preference)`.
 
 ## Do / Don't
 - Do lead the detail with the email, with its reasoning directly under or beside it.
 - Do keep flagged companies in their own group at the top.
 - Do show disqualified rows with their one-line reason; never hide them.
 - Do set numbers, domains and source paths in the mono face, right-aligned in data views.
-- Don't use the accent for anything except the primary button and the key count.
+- Don't use the accent for anything except the primary button, the key count and the last funnel bar.
 - Don't use emoji as icons: one icon set, 1.75 stroke, throughout.
 - No default purple or indigo gradients, no glassmorphism or glow.
 - No hero-plus-three-feature-cards template.
@@ -57,8 +62,8 @@ All three are plain CSS: no library, no licence or attribution. Wrap in `@media 
 - One radius, one spacing scale; no one-off values.
 - No thick coloured stripe down one side of a card; show emphasis with a label, icon, tint or weight.
 - No gradient text; no marketing buzzwords ("revolutionise", "supercharge", "seamless", "cutting-edge").
-- Avoid Inter, Roboto, Geist, Plus Jakarta Sans, Space Grotesk and Fraunces. This direction uses Familjen Grotesk on purpose.
+- Avoid Inter, Roboto, Geist, Plus Jakarta Sans, Space Grotesk and Fraunces. This direction uses Instrument Sans on purpose.
 - Text left-aligned in data views; numbers right-aligned with tabular figures.
 - Headings never skip a level (h1, then h2, then h3).
 - The Impeccable detector (`npx impeccable detect <url>`) must come back clean before a phase is called done.
-- Accepted detector finding: `cream-palette` on the page background. The cream surface is the user's own saved palette (Startup Warm) and was chosen on purpose as Direction B from three rendered options, so this finding is expected and is not fixed.
+- Accepted detector finding: `overused-font` (Instrument Sans). It came with Direction C, which the operator chose from three rendered options on 2026-11-17, so this finding is expected and is not fixed.
