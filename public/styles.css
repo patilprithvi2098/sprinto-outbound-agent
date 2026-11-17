@@ -80,8 +80,6 @@ main.wide { max-width: 1280px; }
 .counts dd.key { color: var(--accent-text); }
 .desk { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); gap: var(--s6); align-items: start; }
 .list ul { list-style: none; padding: 0; }
-.list .group { margin: var(--s5) 0 var(--s2); display: flex; justify-content: space-between; }
-.list .group:first-child { margin-top: 0; }
 .list li { border-radius: var(--radius); }
 .list li + li { margin-top: var(--s2); }
 .item { display: block; width: 100%; text-align: left; font: inherit; color: inherit; cursor: pointer;
@@ -170,7 +168,7 @@ p { text-wrap: pretty; }
 .btn::before { content: ""; position: absolute; inset: 0; z-index: -1; background: var(--text); transform: scaleX(0); transform-origin: left; }
 .btn:not([disabled]):hover, .btn:not([disabled]):focus-visible { color: var(--card); border-color: var(--text); }
 .btn:not([disabled]):hover::before, .btn:not([disabled]):focus-visible::before { transform: scaleX(1); }
-.counts { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: var(--s3); border-bottom: 0; padding-bottom: 0; }
+.counts { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: var(--s3); border-bottom: 0; padding-bottom: 0; }
 .counts > div, .panel, .item, .desk > .detail { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); }
 .counts > div { padding: var(--s3) var(--s4); }
 .counts dd { font-size: 32px; line-height: 1.2; }
@@ -221,3 +219,49 @@ p { text-wrap: pretty; }
 @keyframes ring { from { box-shadow: 0 0 0 0 rgba(13, 116, 128, .45); } to { box-shadow: 0 0 0 10px rgba(13, 116, 128, 0); } }
 @keyframes rise { from { transform: translateY(10px); } } /* movement only: fading text would fail contrast mid-way */
 @keyframes grow { from { transform: scaleX(0); } }
+
+/* ---- Review, second pass: groups as dropdowns, email end to end, people map ---- */
+.desk { grid-template-columns: 1fr; gap: var(--s4); }
+.list details.group { margin: 0 0 var(--s2); background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); }
+.list details.group > summary { display: flex; justify-content: space-between; align-items: center; padding: var(--s3) var(--s4); list-style: none; }
+.list details.group > summary::-webkit-details-marker, .orgmap > summary::-webkit-details-marker { display: none; }
+.list details.group > summary::after, .orgmap > summary::after, details.person > summary::after { content: ""; width: 8px; height: 8px; flex: none; margin-left: var(--s3);
+  border-right: 2px solid var(--text); border-bottom: 2px solid var(--text); transform: rotate(45deg); }
+.list details[open].group > summary::after, .orgmap[open] > summary::after, details[open].person > summary::after { transform: rotate(-135deg); }
+.list details.group > summary .mono { margin-left: auto; }
+.list details.group > summary { gap: var(--s2); cursor: pointer; }
+.list details.group ul { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: var(--s2); padding: 0 var(--s3) var(--s3); }
+.list li + li { margin-top: 0; }
+textarea.body-field, .reasons { max-width: none; }
+.reasons { columns: 2 340px; column-gap: var(--s6); margin-top: var(--s5); }
+.reasons h3, .reasons li, .reasons p { break-inside: avoid; }
+.reasons h3:first-child { margin-top: 0; }
+.orgmap { margin-top: var(--s4); background: var(--surface-2); border-radius: var(--radius); }
+.orgmap > summary { display: flex; justify-content: space-between; align-items: center; padding: var(--s3) var(--s4); list-style: none; }
+.org { padding: 0 var(--s4) var(--s4); display: grid; justify-items: center; }
+.org-root { padding: var(--s2) var(--s4); background: var(--card); border: 2px solid var(--secondary); border-radius: var(--radius); position: relative; margin-bottom: var(--s5); }
+.org-root::after { content: ""; position: absolute; left: 50%; top: 100%; width: 2px; height: var(--s5); background: var(--secondary); }
+.org-row { list-style: none; padding: 0; width: 100%; display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: var(--s5) var(--s3); border-top: 2px solid var(--secondary); align-items: start; }
+.org-node { position: relative; margin-top: var(--s4); padding: var(--s3); background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
+  display: flex; gap: var(--s2); align-items: flex-start; justify-content: space-between; }
+.org-node::before { content: ""; position: absolute; left: 50%; bottom: 100%; width: 2px; height: var(--s4); background: var(--secondary); }
+.org-node.to { border: 2px solid var(--accent); }
+details.person { flex: 1; min-width: 0; margin: 0; }
+details.person > summary { display: flex; align-items: center; list-style: none; font-weight: 600; }
+details.person > summary::-webkit-details-marker { display: none; }
+details.person > summary > span { display: block; }
+.org-name { overflow-wrap: anywhere; }
+.org-title { font-weight: 400; font-size: 13px; color: var(--text-muted); margin-left: var(--s2); flex: 1; }
+details.person p { font-size: 14px; margin-top: var(--s2); overflow-wrap: anywhere; }
+details.person .label { display: block; margin: var(--s3) 0 var(--s1); font-weight: 400; }
+textarea.note { min-height: 0; font: 14px/1.5 var(--font); }
+.cc { display: inline-flex; gap: var(--s1); align-items: center; font-weight: 600; font-size: 13px; cursor: pointer; min-height: 24px; }
+.cc input { width: 18px; height: 18px; accent-color: var(--accent); }
+.org > .hint { margin-top: var(--s3); justify-self: start; }
+@media (min-width: 821px) { .list { position: static; max-height: none; overflow: visible; padding: 0; } .item { height: 100%; } }
+@media (max-width: 820px) { .org-row { border-top: 0; } .org-node::before, .org-root::after { display: none; } .org-root { margin-bottom: 0; } }
+@media (prefers-reduced-motion: no-preference) {
+  .list details.group > summary::after, .orgmap > summary::after, details.person > summary::after { transition: transform .2s; }
+  details[open].group > ul, .orgmap[open] > .org, details[open].person > *:not(summary) { animation: rise .25s ease-out; }
+  .org-node { transition: border-color .15s, transform .15s; } .org-node:hover { transform: translateY(-2px); border-color: var(--secondary); }
+}

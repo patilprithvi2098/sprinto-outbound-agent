@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 import feedback
 import pipeline
 import store
-from mailer import send_to_operator
+from mailer import cc_allowed, send_to_operator
 
 RUN_ID = re.compile(r"^\d{8}-\d{6}(-[0-9a-f]{4})?$")  # the suffix keeps two runs started in the same second apart
 STEP_TTL = 330  # seconds: past Vercel's 300 s limit, so a company whose step died can be picked up again
@@ -132,21 +132,36 @@ def state(run_id):
 
 
 def act(run_id, domain, action, edits=None):
-    """send | rewrote | skip on one record. `edits` may carry the operator's subject, body and reason.
-    Returns (record, None) or (None, (http code, message))."""
+    """send | rewrote | skip | note on one record. `edits` may carry the operator's subject, body, reason, the people
+    he marked as CC, or a note about one person. Returns (record, None) or (None, (http code, message))."""
     edits = edits or {}
-    if not RUN_ID.fullmatch(run_id or "") or action not in ("send", "rewrote", "skip"):
+    if not RUN_ID.fullmatch(run_id or "") or action not in ("send", "rewrote", "skip", "note"):
         return None, (400, "Bad request.")
     meta = store.STORE.get("run", run_id)
     key = "%s/%s" % (run_id, domain)
     if not meta or domain not in meta["domains"] or not store.STORE.get("record", key):
         return None, (404, "That company is not in this run.")
-    for k in ("subject", "body", "reason"):  # checked here too, before any email goes out
+    for k in ("subject", "body", "reason", "note", "person"):  # checked here too, before any email goes out
         if k in edits and not isinstance(edits[k], str):
             return None, (400, "Bad request.")
     with _lock:
         r = store.STORE.get("record", key)
         draft = r.get("draft") or {}
+        known = {o["email"] for o in r.get("others") or []}  # a CC or a note can only name someone Hunter found here
+        if action == "note":
+            person = edits.get("person")
+            if not r.get("contact") or person not in known | {r["contact"]["email"]}:
+                return None, (400, "That person is not on this company's map.")
+            notes = r.setdefault("notes", {})
+            notes[person] = (edits.get("note") or "").strip()[:feedback.MAX_REASON]
+            if not notes[person]:
+                del notes[person]
+            store.STORE.put("record", key, r)
+            r["status"] = status_of(r)
+            return r, None
+        cc = edits.get("cc") or []
+        if not isinstance(cc, list) or len(cc) > pipeline.MAX_OTHERS or any(e not in known for e in cc):
+            return None, (400, "A CC must be someone on this company's map.")
         if not _ready(r):
             return None, (409, "This company has no draft ready to act on.")
         review = r.setdefault("review", {"status": "Qualified"})
@@ -161,11 +176,15 @@ def act(run_id, domain, action, edits=None):
             if change:
                 review["edited"] = {"subject": edits["subject"].strip(), "body": edits["body"].strip() + "\n"}
             subject = review["edited"]["subject"] if change else draft["subject"]
+            deliver = [e for e in cc if cc_allowed(e)]
+            review.update(cc=cc, cc_delivered=deliver)
             try:
-                send_to_operator(pipeline.subject_line(subject, r.get("name") or domain), pipeline.inbox_email(r))
+                args = (pipeline.subject_line(subject, r.get("name") or domain), pipeline.inbox_email(r))
+                send_to_operator(*args, cc=deliver) if deliver else send_to_operator(*args)
             except Exception as e:
                 store.STORE.release("send:" + key)  # nothing went out: allow a retry
-                review.pop("edited", None)
+                for k in ("edited", "cc", "cc_delivered"):
+                    review.pop(k, None)
                 review["send_error"] = "Gmail send failed (%s). Try again." % type(e).__name__
                 store.STORE.put("record", key, r)
                 return None, (502, review["send_error"])

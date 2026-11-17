@@ -63,7 +63,7 @@ npx playwright test                     # browser tests in installed Chrome, eve
 
 ## Safety choices
 
-- **Emails go only to `OPERATOR_EMAIL`.** No request can change the recipient.
+- **Emails go only to `OPERATOR_EMAIL`.** No request can change the recipient. People marked as CC on a draft are named in that email; a CC is really delivered only to an address or `@domain` listed in `CC_ALLOWED`, which is for addresses you control.
 - **Secrets stay in environment variables** and never appear in errors, records or git.
 - **Requests from other sites are refused:**
   - The local server rejects requests addressed to other hostnames (DNS rebinding).

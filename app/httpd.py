@@ -153,10 +153,15 @@ class Handler(SimpleHTTPRequestHandler):
                 return self._json(409, {"error": error})
             return self._json(202, {"run_id": run_id, "domains": parsed["valid"], "rejected": parsed["rejected"]})
         if self.path == "/api/action" and all(isinstance(data.get(k), str) for k in ("run_id", "domain", "action")):
-            edits = {k: data[k] for k in ("subject", "body", "reason") if k in data}
-            limits = {"subject": feedback.MAX_SUBJECT, "body": feedback.MAX_BODY, "reason": feedback.MAX_REASON}
+            edits = {k: data[k] for k in ("subject", "body", "reason", "note", "person") if k in data}
+            limits = {"subject": feedback.MAX_SUBJECT, "body": feedback.MAX_BODY, "reason": feedback.MAX_REASON,
+                      "note": feedback.MAX_REASON, "person": 320}
             if any(not isinstance(v, str) or len(v) > limits[k] for k, v in edits.items()):
                 return self._json(400, {"error": "That text is too long. Shorten it and try again."})
+            if "cc" in data:  # a list of addresses; runs.act only accepts people Hunter found at this company
+                if not isinstance(data["cc"], list) or any(not isinstance(e, str) for e in data["cc"]):
+                    return self._json(400, {"error": "Bad request."})
+                edits["cc"] = data["cc"]
             record, error = runs.act(data["run_id"], data["domain"], data["action"], edits)  # the recipient is never taken from the request
             if error:
                 return self._json(error[0], {"error": error[1]})

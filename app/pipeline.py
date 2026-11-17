@@ -247,6 +247,21 @@ def pick_contact(people, require_tier1=False):
     }, len(people)
 
 
+MAX_OTHERS = 8
+
+
+def others_found(people, contact):
+    """The other people Hunter returned with a usable address: shown on the company's people map, and markable as CC."""
+    out = []
+    for p in people:
+        email = p.get("value")
+        if not email or email == contact["email"] or (p.get("verification") or {}).get("status") == "invalid":
+            continue
+        out.append({"name": " ".join(filter(None, [p.get("first_name"), p.get("last_name")])) or email,
+                    "position": p.get("position") or "", "email": email, "role_tier": role_tier(p.get("position"))[0]})
+    return sorted(out, key=lambda o: o["role_tier"] or 9)[:MAX_OTHERS]
+
+
 class HunterStop(RuntimeError):
     """Bad key or no searches left: asking again in this run cannot work."""
 
@@ -360,6 +375,15 @@ def trace_line(c):
         c["from_pack"], total, c["generic"], c["made_up"], c["banned"])
 
 
+def cc_lines(record):
+    """Who the operator marked as CC, and whether each was really emailed (only addresses on CC_ALLOWED are)."""
+    review = record.get("review") or {}
+    names = {o["email"]: o["name"] for o in record.get("others") or []}
+    sent = set(review.get("cc_delivered") or [])
+    return ["CC marked: %s <%s> (%s)" % (names.get(e, e), e, "emailed" if e in sent else "not emailed")
+            for e in review.get("cc") or []]
+
+
 def inbox_email(record):
     """The draft first, the reasoning directly under it."""
     r, c, d = record, record["contact"], record["draft"]
@@ -368,6 +392,7 @@ def inbox_email(record):
     lines = [edited["body"] if edited else email_body(c["first_name"], d), "-" * 40, "DRAFT ONLY. Nothing was sent to this person.",
              "Would go to: %s, %s <%s> (Hunter confidence %s, %s)" % (c["name"], c["position"], c["email"],
                                                                      c["confidence"], c["verification_status"]),
+             *cc_lines(r),
              "", "Why this company: %s" % r["reason"], "Pages used: %s" % ", ".join(sources),
              "Why this person: %s" % c["why_this_person"],
              "Pain 1: %s [from %s]" % (d["pains"][0]["pain"], d["pains"][0]["evidence_field"]),
@@ -436,6 +461,7 @@ def run_company(domain, run_id, writer=SONNET, send=True, apply_corrections=True
             "nobody with a ranked role, confidence %d+ and a deliverable email" % CONFIG["min_confidence"]
         return done("flagged", "No suitable contact: %s." % why, rule_applied=rule)
     record["contact"] = contact
+    record["others"] = others_found(people, contact)
 
     pack = {"company": fields["company_name"], "what_it_does": fields["what_it_does"],
             "facts": {k: {"value": fields[k], "quote": fields[k + "_quote"],

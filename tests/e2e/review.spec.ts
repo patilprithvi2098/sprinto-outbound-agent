@@ -35,6 +35,12 @@ function stubAction(page: Page, reply: (action: string) => { status: number; bod
 
 const item = (page: Page, name: string) => page.locator(".item").filter({ hasText: name });
 const detail = (page: Page) => page.locator("#detail");
+// Companies sit in dropdown groups; only the group of the open company starts open.
+async function pick(page: Page, name: string) {
+  const group = page.locator("details.group").filter({ has: item(page, name) });
+  if ((await group.getAttribute("open")) === null) await group.locator("summary").click();
+  await item(page, name).click();
+}
 
 test("empty state when there is no run yet", async ({ page }) => {
   await open(page, { run: null });
@@ -56,6 +62,7 @@ test("header counts and groups, with flagged companies first", async ({ page }) 
 
 test("every status has a text label, not just a colour", async ({ page }) => {
   await open(page);
+  for (const g of ["Drafts to review", "Dropped with reason"]) await page.locator(`details[data-group="${g}"] > summary`).click();
   for (const s of ["Flagged", "Qualified", "Disqualified"]) await expect(page.locator(".list .chip", { hasText: s }).first()).toBeVisible();
 });
 
@@ -65,13 +72,13 @@ test("a flagged company shows No draft, its reason as text, and Open for manual 
   await expect(detail(page).getByRole("heading", { name: "No draft" })).toBeVisible();
   await expect(detail(page).getByText("<img src=x onerror=alert(1)>", { exact: false })).toBeVisible(); // shown, never run
   await expect(detail(page).getByRole("link", { name: "Open for manual review" })).toHaveAttribute("href", "https://tallybook.co/");
-  await item(page, "orbitly.app").click();
+  await pick(page, "orbitly.app");
   await expect(detail(page).getByText("site blocked automated access (HTTP 403)")).toBeVisible();
 });
 
 test("a ready draft leads with the email and keeps the reasoning under it", async ({ page }) => {
   await open(page);
-  await item(page, "Kestrel Metrics").click();
+  await pick(page, "Kestrel Metrics");
   const d = detail(page);
   await expect(d.getByLabel("Subject")).toHaveValue("Frankfurt region and security reviews");
   await expect(d.getByLabel("Email", { exact: true })).toHaveValue(/^Hi Ines,/);
@@ -90,7 +97,7 @@ test("a ready draft leads with the email and keeps the reasoning under it", asyn
 test("Send to my inbox sends once on a double click and the status changes", async ({ page }) => {
   await open(page);
   const calls = await stubAction(page, () => ({ status: 200, body: { record: { ...READY, status: "Sent to me", review: { status: "Sent to me", sent_at: "2026-11-12T08:00:00+00:00" } } } }), 600);
-  await item(page, "Kestrel Metrics").click();
+  await pick(page, "Kestrel Metrics");
   const send = detail(page).getByRole("button", { name: "Send to my inbox" });
   await send.click();
   await expect(send).toBeDisabled();
@@ -104,7 +111,7 @@ test("Send to my inbox sends once on a double click and the status changes", asy
 test("a failed send says so in plain words and can be retried", async ({ page }) => {
   await open(page);
   await stubAction(page, () => ({ status: 502, body: { error: "Gmail send failed (SMTPServerDisconnected). Try again." } }));
-  await item(page, "Kestrel Metrics").click();
+  await pick(page, "Kestrel Metrics");
   await detail(page).getByRole("button", { name: "Send to my inbox" }).click();
   await expect(detail(page).getByRole("alert")).toHaveText("Gmail send failed (SMTPServerDisconnected). Try again.");
   await expect(detail(page).getByRole("button", { name: "Send to my inbox" })).toBeEnabled();
@@ -115,7 +122,7 @@ test("I rewrote it marks the draft Rewritten; Skip disables sending", async ({ p
   await stubAction(page, (a) => ({ status: 200, body: { record: a === "rewrote"
     ? { ...READY, status: "Rewritten", review: { status: "Rewritten", rewritten: true } }
     : { ...READY, review: { status: "Qualified", skipped: true } } } }));
-  await item(page, "Kestrel Metrics").click();
+  await pick(page, "Kestrel Metrics");
   await detail(page).getByRole("button", { name: "I rewrote it" }).click();
   await expect(item(page, "Kestrel Metrics").locator(".chip")).toHaveText("Rewritten");
   await detail(page).getByRole("button", { name: "Skip" }).click();
@@ -172,6 +179,8 @@ test("server down shows a plain message", async ({ page }) => {
 
 test("keyboard only: move to a company and open it", async ({ page }) => {
   await open(page);
+  expect(await tabUntil(page, 'details[data-group="Drafts to review"] > summary')).toBe(true);
+  await page.keyboard.press("Enter"); // opens the dropdown group
   expect(await tabUntil(page, 'li[data-domain="kestrelmetrics.io"] .item')).toBe(true);
   await page.keyboard.press("Enter");
   await expect(detail(page).getByLabel("Subject")).toHaveValue("Frankfurt region and security reviews");
@@ -183,7 +192,7 @@ test("keyboard only: move to a company and open it", async ({ page }) => {
 
 test("layout: no sideways scroll; on a phone the selected card opens in place", async ({ page }, info) => {
   await open(page);
-  await item(page, "Kestrel Metrics").click();
+  await pick(page, "Kestrel Metrics");
   expect(await hasHorizontalOverflow(page)).toBe(false);
   const inCard = await page.locator('li[data-domain="kestrelmetrics.io"] #detail').count();
   expect(inCard).toBe(info.project.name === "chrome-375" ? 1 : 0);
@@ -199,7 +208,7 @@ const REWRITTEN = { ...READY, status: "Rewritten", review: { status: "Rewritten"
 test("an edited draft is sent as edited, with the reason, and becomes Rewritten", async ({ page }) => {
   await open(page);
   const calls = await stubAction(page, () => ({ status: 200, body: { record: REWRITTEN } }), 500);
-  await item(page, "Kestrel Metrics").click();
+  await pick(page, "Kestrel Metrics");
   const d = detail(page);
   const body = d.getByLabel("Email", { exact: true });
   await body.fill((await body.inputValue()).replace("Is ISO 27001 already on your plan for next year?", "Worth a one-line reply?"));
@@ -220,7 +229,7 @@ test("an edited draft is sent as edited, with the reason, and becomes Rewritten"
 test("an empty subject or email is refused before anything is sent", async ({ page }) => {
   await open(page);
   const calls = await stubAction(page, () => ({ status: 200, body: { record: REWRITTEN } }));
-  await item(page, "Kestrel Metrics").click();
+  await pick(page, "Kestrel Metrics");
   const d = detail(page);
   await d.getByLabel("Email", { exact: true }).fill("   ");
   await d.getByRole("button", { name: "Send to my inbox" }).click();
@@ -235,7 +244,7 @@ test("an empty subject or email is refused before anything is sent", async ({ pa
 
 test("very long edits are capped in the fields and never overflow the page", async ({ page }) => {
   await open(page);
-  await item(page, "Kestrel Metrics").click();
+  await pick(page, "Kestrel Metrics");
   const d = detail(page);
   await d.getByLabel("Subject").fill("s".repeat(400));
   await d.getByLabel("Email", { exact: true }).fill("b".repeat(6000));
@@ -250,7 +259,7 @@ test("a save that fails still sends, and says the correction was not stored", as
   await open(page);
   await stubAction(page, () => ({ status: 200, body: { record: { ...REWRITTEN, review: { ...REWRITTEN.review,
     correction: { saved: false, id: null, note: "the feedback database could not be reached (TimeoutError)" } } } } }));
-  await item(page, "Kestrel Metrics").click();
+  await pick(page, "Kestrel Metrics");
   await detail(page).getByLabel("Subject").fill("Frankfurt and ISO 27001");
   await detail(page).getByRole("button", { name: "Send to my inbox" }).click();
   await expect(detail(page).getByText(/Not saved to the feedback loop: the feedback database could not be reached/)).toBeVisible();
@@ -260,7 +269,7 @@ test("a save that fails still sends, and says the correction was not stored", as
 test("Skip sends the reason along as a rejection", async ({ page }) => {
   await open(page);
   await stubAction(page, () => ({ status: 200, body: { record: { ...READY, review: { status: "Qualified", skipped: true, disagreement: 1 } } } }));
-  await item(page, "Kestrel Metrics").click();
+  await pick(page, "Kestrel Metrics");
   await detail(page).getByLabel("Why did you change it? (optional)").fill("Wrong person");
   await detail(page).getByRole("button", { name: "Skip" }).click();
   expect(bodies[0]).toMatchObject({ action: "skip", reason: "Wrong person" });
@@ -283,4 +292,41 @@ test("a draft written with earlier corrections says so, and a paused loop is exp
   await open(page, run([learned], { corrections_paused: true }));
   await expect(detail(page).getByText("Written with 2 of your earlier corrections in mind. He rewrote the ask in 2 of his last 3 edits.")).toBeVisible();
   await expect(page.getByText(/Your corrections were not applied to this run/)).toBeVisible();
+});
+
+// ---------- Second pass: dropdown groups, people map, notes, CC ----------
+
+test("groups are dropdowns: only the open company's group starts open", async ({ page }) => {
+  await open(page);
+  await expect(item(page, "Tallybook")).toBeVisible();
+  await expect(item(page, "Kestrel Metrics")).toBeHidden();
+  await page.locator('details[data-group="Drafts to review"] > summary').click();
+  await expect(item(page, "Kestrel Metrics")).toBeVisible();
+});
+
+test("a person on the reach map opens the company on its people map", async ({ page }) => {
+  await open(page);
+  await page.locator("#reach .who").filter({ hasText: "Ines Albrecht" }).click();
+  const map = detail(page).locator(".orgmap");
+  await expect(map).toHaveAttribute("open", "");
+  await expect(map.locator(".org-node.to")).toContainText("Ines Albrecht");
+  await expect(map.locator(".org-node").filter({ hasText: "Omar Reyes" }).getByLabel("CC")).toBeVisible();
+});
+
+test("a note on a person is saved, and a ticked CC goes with the send", async ({ page }) => {
+  await open(page);
+  await stubAction(page, (action) => ({ status: 200, body: { record: action === "note"
+    ? { ...READY, notes: { "omar@kestrelmetrics.io": "Met at SaaStr" } }
+    : { ...READY, status: "Sent to me", review: { status: "Sent to me", sent_at: "2026-11-12T08:00:00+00:00", cc: ["omar@kestrelmetrics.io"], cc_delivered: [] } } } }));
+  await page.locator("#reach .who").filter({ hasText: "Ines Albrecht" }).click();
+  const omar = detail(page).locator(".org-node").filter({ hasText: "Omar Reyes" });
+  await omar.locator("summary").click();
+  await omar.getByLabel("Your notes").fill("Met at SaaStr");
+  await omar.getByLabel("Your notes").blur();
+  await expect(omar.getByRole("status")).toHaveText("Saved.");
+  expect(bodies[0]).toMatchObject({ action: "note", person: "omar@kestrelmetrics.io", note: "Met at SaaStr" });
+  await omar.getByLabel("CC").check();
+  await detail(page).getByRole("button", { name: "Send to my inbox" }).click();
+  expect(bodies[1]).toMatchObject({ action: "send", cc: ["omar@kestrelmetrics.io"] });
+  await expect(detail(page).locator("#act-note")).toContainText("CC marked: 1; none of them were emailed.");
 });

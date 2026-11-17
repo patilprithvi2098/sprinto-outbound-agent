@@ -12,6 +12,7 @@ export const READY = {
     ev("trigger", "Kestrel opens its Frankfurt data region", "/blog", "kestrelmetrics.io")],
   pages_fetched: [{ url: "https://kestrelmetrics.io/", ok: true, reason: "" }],
   fields: { trigger_quote: "Kestrel opens its Frankfurt data region" },
+  others: [{ name: "Omar Reyes", position: "CTO", email: "omar@kestrelmetrics.io", role_tier: 2 }],
   contact: { name: "Ines Albrecht", first_name: "Ines", position: "Head of Security", email: "ines@kestrelmetrics.io", confidence: 91,
     verification_status: "valid", role_tier: 1, why_this_person: "Highest on the role priority list (tier 1, security, compliance or risk) among 3 usable of 9 people Hunter found." },
   draft: {

@@ -237,3 +237,59 @@ class CrashIsExplained(unittest.TestCase):
         self.assertTrue(got["status"].startswith("500"))
         self.assertIn("RuntimeError", json.loads(body)["error"])
         self.assertNotIn("boom", body.decode())
+
+
+class CcAndNotes(unittest.TestCase):
+    """People on a company's map can be marked as CC or given a note; only addresses on CC_ALLOWED are ever emailed."""
+
+    def setUp(self):
+        import copy
+        import tempfile
+        import store
+        from test_phase3 import READY, RID
+        self.rid, self.tmp, self._real = RID, tempfile.TemporaryDirectory(), store.STORE
+        store.STORE = store.FileStore(self.tmp.name)
+        record = copy.deepcopy(READY)
+        record["others"] = [{"name": "Omar Reyes", "position": "CTO", "email": "omar@k.io", "role_tier": 2}]
+        store.STORE.put("run", RID, {"id": RID, "started_at": "t", "finished_at": "t", "halt": {}, "attempts": {},
+                                     "corrections_paused": False, "domains": ["kestrelmetrics.io"]})
+        store.STORE.put("record", RID + "/kestrelmetrics.io", record)
+        self.sent, self._send = [], runs.send_to_operator
+        runs.send_to_operator = lambda subject, body, cc=(): self.sent.append((body, list(cc)))
+
+    def tearDown(self):
+        import store
+        runs.send_to_operator, store.STORE = self._send, self._real
+        self.tmp.cleanup()
+
+    def test_a_cc_outside_the_map_is_refused_and_nothing_is_sent(self):
+        self.assertEqual(runs.act(self.rid, "kestrelmetrics.io", "send", {"cc": ["boss@elsewhere.com"]})[1][0], 400)
+        self.assertEqual(self.sent, [])
+
+    def test_a_marked_cc_is_named_but_not_emailed(self):
+        from unittest import mock
+        with mock.patch.dict(os.environ, {"CC_ALLOWED": ""}):
+            r, err = runs.act(self.rid, "kestrelmetrics.io", "send", {"cc": ["omar@k.io"]})
+        self.assertIsNone(err)
+        self.assertEqual(r["review"]["cc_delivered"], [])
+        self.assertEqual(self.sent[0][1], [])
+        self.assertIn("CC marked: Omar Reyes <omar@k.io> (not emailed)", self.sent[0][0])
+
+    def test_an_allowed_cc_is_emailed(self):
+        from unittest import mock
+        with mock.patch.dict(os.environ, {"CC_ALLOWED": "@k.io"}):
+            r, _ = runs.act(self.rid, "kestrelmetrics.io", "send", {"cc": ["omar@k.io"]})
+        self.assertEqual(self.sent[0][1], ["omar@k.io"])
+        self.assertIn("(emailed)", self.sent[0][0])
+
+    def test_notes_are_saved_only_for_people_on_the_map(self):
+        r, err = runs.act(self.rid, "kestrelmetrics.io", "note", {"person": "omar@k.io", "note": " Met at SaaStr "})
+        self.assertIsNone(err)
+        self.assertEqual(r["notes"], {"omar@k.io": "Met at SaaStr"})
+        self.assertEqual(runs.act(self.rid, "kestrelmetrics.io", "note", {"person": "x@y.z", "note": "n"})[1][0], 400)
+
+    def test_others_leave_out_the_contact_and_dead_addresses(self):
+        import pipeline
+        people = [{"value": "i@k.io", "first_name": "Ines"}, {"value": "omar@k.io", "first_name": "Omar", "position": "CTO"},
+                  {"value": "gone@k.io", "verification": {"status": "invalid"}}]
+        self.assertEqual([o["email"] for o in pipeline.others_found(people, {"email": "i@k.io"})], ["omar@k.io"])
