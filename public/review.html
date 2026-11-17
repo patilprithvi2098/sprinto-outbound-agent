@@ -23,13 +23,15 @@
   <nav aria-label="Main"><a href="index.html">Run</a><a href="review.html" aria-current="page">Review</a></nav>
 </header>
 <main class="wide">
-  <h1 id="title">Review</h1>
+  <div class="title-row"><h1 id="title">Review</h1><button type="button" class="btn primary" data-find>Find companies now</button></div>
+  <p class="hint">New companies are found and researched every morning at 08:00 IST. The button finds the next batch now.</p>
+  <p class="error" id="find-error" role="alert" hidden></p>
   <p class="muted" id="loading">Loading the latest run.</p>
   <p class="error" id="load-error" role="alert" hidden></p>
   <div class="empty" id="empty" hidden>
     <h2>No run yet</h2>
-    <p>Paste domains on the Run screen. Drafts and the reasoning behind each one will appear here.</p>
-    <a class="btn" href="index.html">Go to Run</a>
+    <p>Companies are found for you every morning. Use Find companies now to start today's batch, or paste your own list on the Run screen.</p>
+    <a class="btn" href="index.html">Paste domains instead</a>
   </div>
   <section id="run" hidden aria-labelledby="title">
     <p class="muted" id="run-meta"></p>

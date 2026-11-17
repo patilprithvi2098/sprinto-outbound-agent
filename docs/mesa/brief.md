@@ -3,7 +3,7 @@
 ## Stage 0: coverage map (agreed)
 Problem: Sprinto's Growth Lead researches and writes 8-15 cold emails a week at 15-20 min each; quality drops by the end of the list because he is tired, not because the later companies are worse fits.
 Core verb: judge whether a company is worth emailing, then personalise.
-Primary user: the Growth Lead. He pastes a list of domains, leaves, and returns to drafts in his inbox with the reasoning behind each.
+Primary user: the Growth Lead. He signs in and finds the day's companies already found and researched (Hunter Discover, daily at 08:00 IST), with drafts and the reasoning behind each; pasting his own list stays as a fallback. (Changed from pasting on 2026-11-17, at the operator's request.)
 Working means: (1) a personalised email lands in his inbox, addressed to a named person, with a specific hook; (2) he can explain why the system picked this company, this person and this hook.
 
 | Brief says | Build covers it | Status |
@@ -24,7 +24,7 @@ Build, with a human at the send step. 01 YES, 02 YES, 03 UNCERTAIN (resolved by 
 ## Five Pre-Build Decisions
 - Outcome: the Growth Lead gets more conversations with buyers who need certification and spends his week on them. Metric: time per company from 15-20 min to under 2 min while rewrites stay under 20%; reply rate logged from day one (baseline unmeasured).
 - Baseline: 15-20 min per company (find about 3, research about 7, contact about 3, write about 5: estimates); 8-15 companies a week; about 2-5 hours a week; quality drops late in the list.
-- Workflow change: he pastes domains; the system does the research, qualification, contact, pains and draft; he reviews every draft and its record before any real send; flagged companies come to him.
+- Workflow change: the system finds the companies (or he pastes his own); the system does the research, qualification, contact, pains and draft; he reviews every draft and its record before any real send; flagged companies come to him.
 - Measurement: week 1 field-fill rate and Hunter usable-contact rate; week 4 time per company and rewrite rate; guardrail false qualifies and false disqualifies sampled weekly, plus cost per company; end-goal reply rate and meetings per 100 emails.
 - Kill: rewrites over 50%, contact accuracy under 60%, running takes longer than manual, or false qualifies over 30% of a sampled week. Fallback: manual process. Decider: the Growth Lead.
 

@@ -8,7 +8,7 @@ from functools import partial
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "app"))
 import httpd  # noqa: E402
 
-_PASS_HEADERS = ("Host", "Origin", "Cookie", "Content-Type", "Content-Length")  # all the Handler reads
+_PASS_HEADERS = ("Host", "Origin", "Cookie", "Content-Type", "Content-Length", "Authorization")  # all the Handler reads
 
 
 class _Connection:
@@ -37,7 +37,7 @@ def app(environ, start_response):
     if environ.get("QUERY_STRING"):
         path += "?" + environ["QUERY_STRING"]
     values = {"Host": environ.get("HTTP_HOST", ""), "Origin": environ.get("HTTP_ORIGIN"),
-              "Cookie": environ.get("HTTP_COOKIE"), "Content-Type": environ.get("CONTENT_TYPE"),
+              "Cookie": environ.get("HTTP_COOKIE"), "Authorization": environ.get("HTTP_AUTHORIZATION"), "Content-Type": environ.get("CONTENT_TYPE"),
               "Content-Length": length or None}
     head = "".join("%s: %s\r\n" % (k, values[k]) for k in _PASS_HEADERS if values[k] is not None)
     raw = ("%s %s HTTP/1.1\r\n%s\r\n" % (environ["REQUEST_METHOD"], path, head)).encode("latin-1") + body

@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Org chart preview</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{--surface:#f7f9fa;--card:#fff;--text:#14212b;--muted:#51606b;--border:#d8e0e5;--accent:#0d7480;--accent-soft:#e3f1f2;--warn:#8a5a00;--warn-soft:#fbf1dc;--r:8px}
+*{box-sizing:border-box}body{margin:0;background:var(--surface);color:var(--text);font:15px/1.45 "Instrument Sans",system-ui,sans-serif}
+main{max-width:1180px;margin:0 auto;padding:24px 16px 64px}
+h1{font-size:22px;margin:0 0 4px}p.sub{color:var(--muted);margin:0 0 20px}
+.mono{font-family:"DM Mono",monospace;font-size:12px}
+.legend{display:flex;flex-wrap:wrap;gap:14px;margin:0 0 18px;color:var(--muted);font-size:13px}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.sw{width:14px;height:14px;border-radius:4px;border:1.5px solid var(--border);background:var(--card)}
+.sw.to{border-color:var(--accent);background:var(--accent-soft)}.sw.cc{border-color:var(--accent);border-style:dashed}.sw.gap{border-style:dashed;background:transparent}
+.co{background:var(--card);border:1px solid var(--border);border-radius:var(--r);margin:0 0 12px}
+.co>button{all:unset;cursor:pointer;display:grid;grid-template-columns:auto 1fr auto auto;gap:14px;align-items:center;width:100%;box-sizing:border-box;padding:14px 16px;border-radius:var(--r)}
+.co>button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.logo{width:36px;height:36px;border-radius:8px;background:var(--accent-soft);color:var(--accent);display:grid;place-items:center;font-weight:600}
+.co .why{color:var(--muted);font-size:13px}
+.chip{font-size:12px;padding:3px 8px;border-radius:99px;border:1px solid var(--border);white-space:nowrap}
+.chip.hit{background:var(--accent-soft);border-color:var(--accent);color:#09545c}
+.chev{transition:transform .2s}.co[open] .chev{transform:rotate(90deg)}
+.tree{display:none;overflow-x:auto;padding:4px 16px 24px}.co[open] .tree{display:block}
+/* classic top-down org chart: nested lists with elbow connectors */
+.tree ul{position:relative;display:flex;justify-content:center;padding:20px 0 0;margin:0;list-style:none}
+.tree li{position:relative;padding:20px 6px 0;display:flex;flex-direction:column;align-items:center}
+.tree li::before,.tree li::after{content:"";position:absolute;top:0;width:50%;height:20px;border-top:1.5px solid #aebbc4}
+.tree li::before{right:50%}.tree li::after{left:50%;border-left:1.5px solid #aebbc4}
+.tree li:only-child::before,.tree li:only-child::after{display:none}.tree li:only-child{padding-top:0}
+.tree li:first-child::before,.tree li:last-child::after{border:0}
+.tree li:last-child::before{border-right:1.5px solid #aebbc4;border-radius:0 6px 0 0}
+.tree li:first-child::after{border-radius:6px 0 0 0}
+.tree ul ul::before{content:"";position:absolute;top:0;left:50%;height:20px;border-left:1.5px solid #aebbc4}
+.tree>ul{padding-top:0;width:max-content;min-width:100%}
+/* leaf people stack in a column under their team, so the chart stays as wide as the number of teams */
+.tree ul ul ul{flex-direction:column;align-items:flex-start;padding:10px 0 0 0;width:212px}
+.tree ul ul ul::before{left:12px;top:0;height:calc(100% - 38px)}
+.tree ul ul>li>.node.dept{width:212px;text-align:left}
+.tree ul ul ul li{padding:0 0 10px 30px;align-items:flex-start}
+.tree ul ul ul li::before{left:12px;right:auto;top:28px;width:18px;height:0;border-top:1.5px solid #aebbc4;border-right:0;border-radius:0}
+.tree ul ul ul li::after{display:none}
+.tree ul ul ul li:only-child::before{display:block}.tree ul ul ul li:only-child{padding-top:0}
+.tree ul ul ul li:last-child::before{border-right:0;border-radius:0}
+.node{width:176px;background:var(--card);border:1.5px solid var(--border);border-radius:var(--r);padding:9px 11px;text-align:left}
+.node .n{font-weight:600;font-size:14px}.node .t{color:var(--muted);font-size:12.5px}
+.node .tag{display:inline-block;margin-top:6px;font-size:11px;font-family:"DM Mono",monospace;padding:1px 6px;border-radius:4px;background:var(--surface);color:var(--muted)}
+.node.root{width:auto;min-width:200px;background:var(--text);color:#fff;border-color:var(--text);text-align:center}.node.root .t{color:#c9d3da}
+.node.dept{width:auto;min-width:140px;padding:6px 12px;text-align:center;background:var(--surface);font-size:13px;font-weight:600}
+.node.dept .t{font-weight:400}
+.node.to{border-color:var(--accent);background:var(--accent-soft);box-shadow:0 0 0 3px #0d748022}
+.node.to .tag{background:var(--accent);color:#fff}
+.node.cc{border-color:var(--accent);border-style:dashed}
+.node.gap{border-style:dashed;background:transparent}.node.gap .n{color:var(--muted);font-weight:500}
+.node.gap .tag{background:var(--warn-soft);color:var(--warn)}
+.node.inbox .n{font-family:"DM Mono",monospace;font-size:12.5px;font-weight:500}
+@media (prefers-reduced-motion:no-preference){.co[open] .tree li{animation:grow .32s ease-out both}.co[open] .tree ul ul li{animation-delay:.08s}.co[open] .tree ul ul ul li{animation-delay:.16s}}
+@keyframes grow{from{transform:translateY(-8px)}to{transform:none}}
+.note{margin-top:28px;padding:14px 16px;border:1px solid var(--border);border-radius:var(--r);background:var(--card);color:var(--muted);font-size:13.5px}
+@media (max-width:640px){.co>button{grid-template-columns:auto 1fr auto}.co .chip.hide-s{display:none}}
+</style></head><body><main>
+<h1>Who we reached, company by company</h1>
+<p class="sub">One map per company. Click a company and its people branch out by team. The person emailed is filled, CC is dashed teal, and seats Hunter could not fill are dashed grey.</p>
+<div class="legend"><span><i class="sw to"></i>Emailed (To)</span><span><i class="sw cc"></i>Marked CC</span><span><i class="sw"></i>Found, not contacted</span><span><i class="sw gap"></i>Seat we looked for, not found</span></div>
+<div id="maps"></div>
+<p class="note">Preview with two companies: <b>dub.co</b> is your real live run (what Hunter actually returned), and <b>Kestrel Metrics</b> is invented test data showing a company where more people were found. Text only, no live data is loaded here.</p>
+</main>
+<script>(() => {
+const C = [
+ {d:"kestrelmetrics.io", name:"Kestrel Metrics", st:"Draft ready", hit:true, why:"Series B, opening a Frankfurt data region, no certification shown",
+  teams:[
+   {team:"Leadership", people:[{n:"Hanna Weber",t:"CEO & co-founder",tag:"Decision maker"},{n:"Omar Reyes",t:"CTO",tag:"CC",cls:"cc"}]},
+   {team:"Security & compliance", people:[{n:"Ines Albrecht",t:"Head of Security",tag:"To · tier 1",cls:"to"},{n:"Lukas Brandt",t:"Security Engineer",tag:"Influencer"}]},
+   {team:"Engineering", people:[{n:"Priya Natarajan",t:"VP Engineering",tag:"Influencer"},{n:"Tom Fischer",t:"Platform Lead"}]},
+   {team:"Revenue", people:[{n:"Sara Okafor",t:"Head of Sales",tag:"Feels the pain"}]}]},
+ {d:"dub.co", name:"Dub", st:"Draft ready", hit:true, why:"Link attribution SaaS, Startup Program launched, no certification shown",
+  teams:[
+   {team:"Leadership", people:[{n:"Steven",t:"CEO",tag:"To · tier 3",cls:"to"}]},
+   {team:"Security & compliance", people:[{n:"No one found",t:"Hunter lists nobody in security, compliance or risk",tag:"Gap",cls:"gap"}]},
+   {team:"Engineering", people:[{n:"Kiran",t:"Software Engineer"},{n:"Pedro",t:"Software Engineer"}]},
+   {team:"Shared inboxes", people:[{n:"support@",t:"Support team",cls:"inbox"},{n:"hr@",t:"People team",cls:"inbox"}]}]}
+];
+const esc = s => String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const person = p => `<li><div class="node ${p.cls||""}"><div class="n">${esc(p.n)}</div><div class="t">${esc(p.t)}</div>${p.tag?`<span class="tag">${esc(p.tag)}</span>`:""}</div></li>`;
+document.getElementById("maps").innerHTML = C.map((c,i) => {
+  const found = c.teams.flatMap(t => t.people).filter(p => p.cls !== "gap").length;
+  return `<section class="co"${i===0?" open":""}><button aria-expanded="${i===0}"><span class="logo">${esc(c.name[0])}</span>
+  <span><b>${esc(c.name)}</b> <span class="mono">${esc(c.d)}</span><div class="why">${esc(c.why)}</div></span>
+  <span class="chip ${c.hit?"hit":""} hide-s">${esc(c.st)} · ${found} people</span><span class="chev" aria-hidden="true">›</span></button>
+  <div class="tree"><ul><li><div class="node root"><div class="n">${esc(c.name)}</div><div class="t">${found} people found</div></div>
+  <ul>${c.teams.map(t => `<li><div class="node dept">${esc(t.team)} <span class="t">${t.people.filter(p=>p.cls!=="gap").length}</span></div><ul>${t.people.map(person).join("")}</ul></li>`).join("")}</ul></li></ul></div></section>`;
+}).join("");
+document.querySelectorAll(".co>button").forEach(b => b.onclick = () => {
+  const s = b.parentElement, open = !s.hasAttribute("open");
+  s.toggleAttribute("open", open); b.setAttribute("aria-expanded", open);
+});
+})();</script></body></html>

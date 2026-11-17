@@ -319,3 +319,60 @@ class CcAndNotes(unittest.TestCase):
             again = runs.act(self.rid, "kestrelmetrics.io", "send", {"subject": "New subject", "body": "Hi Ines,\n\nShorter version.\n"})
         self.assertEqual(again[1], (409, "Nothing changed since the last send. Edit the email first."))
         self.assertEqual(len(self.sent), 2)  # the original and the new version, nothing else
+
+
+class FindsCompaniesOnItsOwn(unittest.TestCase):
+    """Hunter Discover picks companies; nothing already researched comes back; the daily timer needs CRON_SECRET."""
+
+    def setUp(self):
+        import tempfile
+        import store
+        self.tmp, self._real = tempfile.TemporaryDirectory(), store.STORE
+        store.STORE = store.FileStore(self.tmp.name)
+        store.STORE.put("record", "20261101-000000/known.io", {"domain": "known.io"})
+
+    def tearDown(self):
+        import store
+        store.STORE = self._real
+        self.tmp.cleanup()
+
+    def test_found_companies_skip_known_ones_and_people_free_ones(self):
+        from unittest import mock
+        import discover
+        answer = [{"domain": "known.io", "emails_count": {"personal": 9}}, {"domain": "Fresh.io", "emails_count": {"personal": 4}},
+                  {"domain": "nobody.io", "emails_count": {"personal": 0}}, {"domain": "next.io", "emails_count": {"personal": 2}}]
+        with mock.patch.object(discover, "_ask", return_value=answer), mock.patch.dict(os.environ, {"HUNTER_API_KEY": "k"}):
+            self.assertEqual(discover.find(5), ["fresh.io", "next.io"])
+            self.assertEqual(discover.find(1), ["fresh.io"])
+
+    def test_a_found_run_is_marked_and_no_run_starts_without_searches(self):
+        from unittest import mock
+        import discover
+        with mock.patch.object(discover, "batch_size", return_value=0):
+            self.assertIn("no searches left", discover.start_found()[2])
+        with mock.patch.object(discover, "batch_size", return_value=2), mock.patch.object(discover, "find", return_value=["fresh.io"]):
+            run_id, domains, error = discover.start_found()
+        self.assertIsNone(error)
+        self.assertEqual(runs.state(run_id)["source"], "found")
+        with mock.patch.object(discover, "batch_size", return_value=2):  # the found run is still unfinished
+            self.assertIn("still being researched", discover.start_found()[2])
+
+    def test_the_timer_needs_the_secret(self):
+        from unittest import mock
+        import discover
+        with mock.patch.dict(os.environ, {"CRON_SECRET": ""}):
+            self.assertFalse(discover.cron_allowed("Bearer "))
+        with mock.patch.dict(os.environ, {"CRON_SECRET": "s3cret"}):
+            self.assertTrue(discover.cron_allowed("Bearer s3cret"))
+            self.assertFalse(discover.cron_allowed("Bearer wrong"))
+            self.assertFalse(discover.cron_allowed(None))
+            status, _, body = VercelEntry().call("GET", "/api/cron")  # no cookie and no secret: refused before any work
+        self.assertTrue(status.startswith("401"))
+
+    def test_everyone_found_keeps_their_team(self):
+        import pipeline
+        people = [{"value": "a@x.io", "first_name": "A", "position": "Engineer", "department": "it"},
+                  {"value": "support@x.io", "type": "generic", "department": "support"}]
+        out = pipeline.others_found(people, {"email": "c@x.io"})
+        self.assertEqual({o["email"]: (o["department"], o["shared"]) for o in out},
+                         {"a@x.io": ("it", False), "support@x.io": ("support", True)})

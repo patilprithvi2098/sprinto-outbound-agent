@@ -3,6 +3,8 @@
   "min_confidence": 70,
   "too_small": {"max_team_size": 15, "early_rounds": ["pre-seed"]},
   "large_company": {"rounds": ["series-c-or-later", "public"], "min_team_size": 300},
+  "discover": {"_note": "Hunter Discover filters for finding companies on its own. One country and one size band per call, rotated by day.",
+    "keywords": ["saas", "b2b"], "headcount": ["51-200", "201-500", "501-1000"], "countries": ["US", "GB", "DE", "IN"], "batch": 8},
   "max_extra_fetches": 4,
   "max_run_cost_usd": 2.0,
   "evidence_map": [

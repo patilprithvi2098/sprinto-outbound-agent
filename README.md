@@ -63,6 +63,7 @@ npx playwright test                     # browser tests in installed Chrome, eve
 
 ## Safety choices
 
+- **Companies are found for you.** Every day at 08:00 IST Vercel's timer calls `/api/cron`, which asks Hunter Discover (free) for B2B SaaS companies not researched before and researches them; Review finishes any left. Set `CRON_SECRET` in Vercel to switch it on. "Find companies now" on Review does the same on demand. Filters are in `config/icp.json` under `discover`.
 - **Emails go only to `OPERATOR_EMAIL`.** No request can change the recipient. People marked as CC on a draft are named in that email; a CC is really delivered only to an address or `@domain` listed in `CC_ALLOWED`, which is for addresses you control.
 - **Secrets stay in environment variables** and never appear in errors, records or git.
 - **Requests from other sites are refused:**

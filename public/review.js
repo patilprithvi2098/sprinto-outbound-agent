@@ -11,7 +11,7 @@
   ];
   const narrow = window.matchMedia("(max-width: 820px)");
   const calm = window.matchMedia("(prefers-reduced-motion: no-preference)");
-  let run = null, selected = null, seen = {}, shownDetail = "", mapped = new Set(), fb = null; // fb: the feedback loop's figures
+  let run = null, selected = null, seen = {}, shownDetail = "", fb = null; // fb: the feedback loop's figures
   let openGroups = {}, mapOpen = false, ccPick = {}, reopened = new Set(); // reopened: sent drafts the operator chose to edit again // what the operator opened or ticked survives a redraw
 
   const shown = s => (s === "Sent to me" ? "Sent" : s); // the operator asked for the words "to me" to go; the note under the draft still says where it went
@@ -29,10 +29,11 @@
 
   function renderHeader() {
     const recs = run.records, n = recs.length;
-    $("title").textContent = `Run of ${n} ${n === 1 ? "domain" : "domains"}`;
+    const found = run.source === "found"; // found by Hunter Discover on its own, not pasted
+    $("title").textContent = found ? `${n} ${n === 1 ? "company" : "companies"} found for you` : `Run of ${n} ${n === 1 ? "domain" : "domains"}`;
     const done = recs.filter(r => !r.pending).length;
     const start = new Date(run.started_at);
-    let when = `Started ${start.toLocaleString([], { weekday: "short", hour: "2-digit", minute: "2-digit" })}`;
+    let when = `${found ? "Found by Hunter Discover and started" : "Started"} ${start.toLocaleString([], { weekday: "short", hour: "2-digit", minute: "2-digit" })}`;
     if (run.finished_at) {
       const secs = Math.round((new Date(run.finished_at) - start) / 1000);
       when += `, took ${secs >= 60 ? Math.floor(secs / 60) + " min " : ""}${secs % 60} s`;
@@ -54,60 +55,77 @@
 
   // Role groups in priority order (config/icp.json role_priority, tier 1 to 4).
   const LANES = ["Security, compliance or risk", "Engineering leadership", "Operations", "CEO or founder"];
-  function renderBoard() {
-    const recs = run.records, n = recs.length, done = recs.filter(r => !r.pending);
-    const reached = done.filter(r => r.contact && r.draft && r.draft.body);
-    renderFlow();
-    const fresh = d => (mapped.has(d) ? "" : " arrive");
-    // A network map, not a table: the run in the middle, a line to every company, and from each company to the people found there.
-    const W = 860, H = 640, cx = W / 2, cy = H / 2 + (n === 1 ? 130 : 0), R1 = 150, rad = d => d * Math.PI / 180; // one company: the hub sits low so its cluster is centred
-    const pt = (deg, r) => [(cx + r * Math.cos(rad(deg))).toFixed(1), (cy + r * Math.sin(rad(deg))).toFixed(1)];
-    const step = 360 / Math.max(n, 1);
-    const kind = r => (r.pending ? "wait" : reached.includes(r) ? "hit" : r.status === "Disqualified" ? "drop" : "flag");
-    const short = t => (t.length > 22 ? t.slice(0, 21) + "…" : t);
-    const nodes = recs.map((r, i) => {
-      const a = -90 + i * step, [x, y] = pt(a, R1), cos = Math.cos(rad(a)), sin = Math.sin(rad(a));
-      const open = r.domain === selected && r.contact; // the chosen company opens up: everyone found there, each with a name
-      const people = r.contact ? [r.contact, ...(r.others || []).slice(0, open ? 8 : 3)] : [];
-      const from = (deg, d) => [(+x + d * Math.cos(rad(deg))).toFixed(1), (+y + d * Math.sin(rad(deg))).toFixed(1)]; // around the company, not the hub
-      const side = deg => { const c = Math.cos(rad(deg)), q = Math.sin(rad(deg)); return `dy="${q > .5 ? 11 : q < -.5 ? -3 : 4}" text-anchor="${c > .35 ? "start" : c < -.35 ? "end" : "middle"}"`; };
-      const spread = open ? Math.min(34, 170 / Math.max(people.length - 1, 1)) : 32;
-      const ppl = people.map((p, j) => { const pa = a + (j - (people.length - 1) / 2) * spread, far = open ? (j % 2 ? 126 : 86) : 50; // two rings keep names apart
-        const [px, py] = from(pa, far), [tx, ty] = from(pa, far + 13);
-        return `<line class="edge" x1="${x}" y1="${y}" x2="${px}" y2="${py}"/><circle class="pnode${j ? "" : " to"}" cx="${px}" cy="${py}" r="${j ? 6 : 9}"><title>${esc(p.name)}, ${esc(p.position || "no title")}${j ? "" : " (written to)"}</title></circle>` +
-          (open ? `<text class="pname${j ? " sub" : ""}" x="${tx}" y="${ty}" ${side(pa)}>${esc(short(p.name))}</text>` : ""); }).join("");
-      const la = open ? a + 138 : a, [lx, ly] = open ? from(la, 36) : from(a, (people.length ? 50 : 0) + 22); // an open company is named on its free side
-      const label = `<text x="${lx}" y="${ly}" ${side(la)}>${esc(short(r.name || r.domain))}` +
-        (r.contact && !open ? ` <tspan class="sub" x="${lx}" dy="15">${esc(short(r.contact.name))}</tspan>` : "") + `</text>`;
-      return `<g class="co ${kind(r)}${fresh(r.domain)}" data-domain="${esc(r.domain)}" role="button" tabindex="0" aria-pressed="${r.domain === selected}" ` +
-        `aria-description="${esc(shown(r.status))}"><title>${esc(r.name || r.domain)}</title><line class="edge" x1="${cx}" y1="${cy}" x2="${x}" y2="${y}"/>${ppl}` +
-        `<circle class="halo" cx="${x}" cy="${y}" r="15"/><circle class="cnode" cx="${x}" cy="${y}" r="${kind(r) === "hit" ? 14 : 10}"/>${label}</g>`;
-    }).join("");
-    const who = r => `<button type="button" class="who${fresh(r.domain)}" data-domain="${esc(r.domain)}" aria-pressed="${r.domain === selected}">` +
-      `<span class="who-name">${esc(r.contact.name)} <span class="mono">${esc(r.contact.position)}</span></span>` +
-      `<span class="who-co"><span class="mono">${esc(r.name || r.domain)}</span>${chip(r.status)}</span></button>`;
-    const ranked = [...reached].sort((p, q) => (p.contact.role_tier || 9) - (q.contact.role_tier || 9));
-    const key = [["hit", "Reached"], ["flag", "Needs you"], ["drop", "Dropped"], ["wait", "Researching"]].filter(k => recs.some(r => kind(r) === k[0]));
-    $("reach").innerHTML = `<div class="netwrap"><div><svg class="net" viewBox="0 0 ${W} ${H}" role="group" aria-label="Map of this run: every company, and the people found there">${nodes}` +
-      `<circle class="hub" cx="${cx}" cy="${cy}" r="22"/><text class="hubt" x="${cx}" y="${cy + 4}" text-anchor="middle">Run</text></svg>` +
-      `<p class="legend">${key.map(k => `<span><svg viewBox="0 0 12 12" aria-hidden="true"><circle class="cnode ${k[0]}" cx="6" cy="6" r="5"/></svg>${k[1]}</span>`).join("")}` +
-      `<span><svg viewBox="0 0 12 12" aria-hidden="true"><circle class="pnode to" cx="6" cy="6" r="4"/></svg>Written to</span><span><svg viewBox="0 0 12 12" aria-hidden="true"><circle class="pnode" cx="6" cy="6" r="4"/></svg>Also found</span></p></div>` +
-      `<div class="netside"><div id="net-info" aria-live="polite"></div>` +
-      (ranked.length ? `<p class="label sub">People reached, by role priority <span class="mono">${ranked.length}</span></p>${ranked.map(who).join("")}` : `<p class="none">No one reached yet in this run.</p>`) + `</div></div>`;
-    done.forEach(r => mapped.add(r.domain));
-    $("reach").querySelectorAll(".who").forEach(b => b.addEventListener("click", () => go(b.dataset.domain))); // a person opens their company on its people map
-    $("reach").querySelectorAll("g.co").forEach(g => { // a node only selects: what it is shows beside the map
-      g.addEventListener("click", () => select(g.dataset.domain, false));
-      g.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); select(g.dataset.domain, false);
-        $("reach").querySelector('g.co[aria-pressed="true"]').focus(); } }); // the map was redrawn: keep the keyboard on the node
-    });
-    $("net-info").addEventListener("click", e => { if (e.target.closest("[data-open]")) go(selected); if (e.target.closest("[data-more]")) findPeople(e.target.closest("[data-more]")); });
-    markReach();
+  const TEAMS = ["Leadership", "Security & compliance", "Engineering", "Revenue", "Operations", "Other teams", "Shared inboxes"];
+  function teamOf(p) { // Hunter's department places a person; a ranked title wins, so the security owner is never lost under IT
+    const d = (p.department || "").toLowerCase(), t = (p.position || "").toLowerCase();
+    if (p.shared) return "Shared inboxes";
+    if (p.role_tier === 1) return "Security & compliance";
+    if (d === "executive" || p.role_tier === 4 || /\b(ceo|founder|co-founder|president|chief executive)\b/.test(t)) return "Leadership";
+    if (["it", "engineering"].includes(d) || p.role_tier === 2 || /\b(cto|engineer|engineering|developer|devops|architect)\b/.test(t)) return "Engineering";
+    if (["sales", "marketing", "communication"].includes(d)) return "Revenue";
+    if (["operations", "management", "finance", "legal"].includes(d) || p.role_tier === 3) return "Operations";
+    return "Other teams";
+  }
+  function roleTag(p, cc) { // why this person matters to a compliance sale, in the words a stakeholder map uses
+    if (p.to) return `To · ${p.role_tier ? "tier " + p.role_tier : "picked"}`;
+    if (cc.has(p.email)) return "CC";
+    const team = teamOf(p);
+    return team === "Leadership" ? "Decision maker" : team === "Security & compliance" ? "Owns compliance" :
+      team === "Engineering" && p.role_tier === 2 ? "Influencer" : team === "Revenue" ? "Feels the pain" : "";
+  }
+  const ccOf = r => { const rev = r.review || {}; return new Set(isLocked(r) ? rev.cc || [] : [...(ccPick[r.domain] || rev.cc || [])]); };
+
+  function orgChart(r) {
+    const cc = ccOf(r), people = [Object.assign({ to: true }, r.contact), ...(r.others || [])];
+    const teams = TEAMS.map(t => [t, people.filter(p => teamOf(p) === t)]).filter(([t, ps]) => ps.length || t === "Security & compliance");
+    const card = p => { const tag = roleTag(p, cc), cls = p.to ? "to" : cc.has(p.email) ? "cc" : p.shared ? "shared" : "";
+      return `<li><button type="button" class="node ${cls}" data-person="${esc(p.email)}"><span class="n">${esc(p.shared ? p.email.split("@")[0] + "@" : p.name)}</span>` +
+        `<span class="t">${esc(p.position || (p.shared ? "Shared inbox" : "No title on Hunter"))}</span>${tag ? `<span class="tag">${esc(tag)}</span>` : ""}</button></li>`; };
+    const gap = `<li><div class="node gap"><span class="n">No one found</span><span class="t">Hunter lists nobody in security, compliance or risk here</span><span class="tag">Gap</span></div></li>`;
+    return `<div class="oc-tree"><ul><li><div class="node root"><span class="n">${esc(r.name || r.domain)}</span><span class="t">${people.length} ${people.length === 1 ? "person" : "people"} found</span></div><ul>` +
+      teams.map(([t, ps]) => `<li><div class="node team">${esc(t)}<span class="mono">${ps.length}</span></div><ul>${ps.length ? ps.map(card).join("") : gap}</ul></li>`).join("") +
+      `</ul></li></ul></div>`;
   }
 
-  function go(d) { // open a company below, on its people map
+  let openMaps = null, grew = null; // which company maps are open (the selected one at first); grew: the map just opened, which animates once
+  function renderBoard() {
+    const recs = run.records, done = recs.filter(r => !r.pending);
+    renderFlow();
+    const mapped = done.filter(r => r.contact);
+    if (!openMaps && mapped.length) openMaps = new Set(selected && mapped.some(r => r.domain === selected) ? [selected] : mapped.slice(0, 1).map(r => r.domain));
+    const row = r => { const open = openMaps.has(r.domain), n = 1 + (r.others || []).length;
+      const line = (r.fields || {}).trigger ? "Why now: " + r.fields.trigger : r.qualify_reason || r.reason || "";
+      return `<section class="oc${open ? " open" : ""}${r.domain === selected ? " sel" : ""}${grew === r.domain ? " grow" : ""}" data-domain="${esc(r.domain)}">` +
+        `<button type="button" class="oc-head" aria-expanded="${open}"><span class="oc-logo" aria-hidden="true">${esc((r.name || r.domain)[0].toUpperCase())}</span>` +
+        `<span><span class="oc-name">${esc(r.name || r.domain)}<span class="mono">${esc(r.domain)}</span></span><span class="oc-why" style="display:block">${esc(line)}</span></span>` +
+        `<span class="oc-count">${chip(r.status)} ${n} ${n === 1 ? "person" : "people"}</span><span class="oc-chev" aria-hidden="true"></span></button>` +
+        (open ? `<div class="oc-body">${orgChart(r)}<div class="oc-foot"><button type="button" class="btn" data-open>${ready(r) ? "Open the draft" : "Open this company"}</button>` +
+          (r.others_searched ? "" : `<button type="button" class="btn" data-more>Find everyone here</button><span class="hint">Uses 1 Hunter search. This company was searched for senior people only.</span>`) +
+          `<p class="error" data-more-error role="alert" hidden></p></div></div>` : "") + `</section>`; };
+    const none = done.length - mapped.length;
+    $("reach").innerHTML = (mapped.length
+      ? `<p class="oc-key"><span><i class="to"></i>Emailed (To)</span><span><i class="cc"></i>Marked CC</span><span><i></i>Found, not contacted</span><span><i class="gap"></i>Seat we looked for, not found</span></p>` +
+        `<div class="ocs">${mapped.map(row).join("")}</div>`
+      : `<p class="oc-none">No one reached yet in this run.</p>`) +
+      (none ? `<p class="oc-none">${none} ${none === 1 ? "company has" : "companies have"} no map: ${none === 1 ? "it" : "they"} stopped before a person was found. The flow above says where and why.</p>` : "");
+    grew = null;
+    $("reach").querySelectorAll(".oc").forEach(sec => {
+      const d = sec.dataset.domain;
+      sec.querySelector(".oc-head").addEventListener("click", () => {
+        if (openMaps.has(d)) openMaps.delete(d); else { openMaps.add(d); grew = d; }
+        renderBoard(); $("reach").querySelector(`.oc[data-domain="${CSS.escape(d)}"] .oc-head`).focus(); // redrawn: keep the keyboard here
+      });
+      sec.querySelectorAll("[data-person]").forEach(b => b.addEventListener("click", () => go(d, b.dataset.person)));
+      sec.querySelector("[data-open]")?.addEventListener("click", () => go(d));
+      sec.querySelector("[data-more]")?.addEventListener("click", e => findPeople(e.currentTarget, d));
+    });
+  }
+
+  function go(d, person) { // open a company below, on its people list; a clicked person opens their notes
     mapOpen = true; select(d, true);
-    $("detail").scrollIntoView({ block: "nearest", behavior: calm.matches ? "smooth" : "auto" });
+    const box = person && [...$("detail").querySelectorAll("details.person")].find(x => x.querySelector(`[data-note="${CSS.escape(person)}"]`));
+    if (box) { box.open = true; box.scrollIntoView({ block: "center", behavior: calm.matches ? "smooth" : "auto" }); box.querySelector("textarea").focus({ preventScroll: true }); }
+    else $("detail").scrollIntoView({ block: "nearest", behavior: calm.matches ? "smooth" : "auto" });
   }
 
   // The flow: every stage a company passes, an arrow between stages, who stopped where and why,
@@ -120,7 +138,7 @@
     const rev = r => r.review || {}, sent = drafted.filter(r => rev(r).sent_at), skipped = drafted.filter(r => rev(r).skipped);
     const waiting = drafted.length - sent.length - skipped.length;
     const stages = [
-      ["Pasted", n, done.length < n ? `${n - done.length} still being researched` : "domains in this run", []],
+      [run.source === "found" ? "Found" : "Pasted", n, done.length < n ? `${n - done.length} still being researched` : run.source === "found" ? "B2B SaaS found by Hunter Discover" : "domains in this run", []],
       ["Pages read", read.length, "each company's own site", done.filter(r => !opened(r))],
       ["Qualified", qualified.length, "not certified, B2B SaaS, big enough", read.filter(r => !qualified.includes(r))],
       ["Person found", found.length, "the right role, through Hunter", qualified.filter(r => !r.contact)],
@@ -141,23 +159,6 @@
         (stopped.length ? `<div class="stops"><p class="label">Stopped here <span class="mono">${stopped.length}</span></p>${stopped.map(stop).join("")}</div>` : "") + `</div>`).join("") +
       `</div>`;
     $("flow").querySelectorAll("[data-domain]").forEach(b => b.addEventListener("click", () => go(b.dataset.domain)));
-  }
-
-  function markReach() { // the chosen company is ringed on the map and described beside it
-    document.querySelectorAll("#reach [data-domain]").forEach(b => b.setAttribute("aria-pressed", b.dataset.domain === selected));
-    const r = run.records.find(x => x.domain === selected), box = $("net-info");
-    if (!box || !r) return;
-    const c = r.contact, more = (r.others || []).length;
-    box.innerHTML = `<h3>${esc(r.name || r.domain)} ${chip(r.status)}</h3><p class="mono muted">${esc(r.domain)}</p>` +
-      (c && r.draft && r.draft.body ? `<p><b>${esc(c.name)}</b>, ${esc(c.position)}</p>` + (r.draft.role_measured_on ? `<p>${esc(r.draft.role_measured_on)}</p>` : "") +
-        ((r.fields || {}).trigger ? `<p class="muted">Why now: ${esc(r.fields.trigger)}</p>` : "") +
-        (more ? `<p class="label sub">Also at ${esc(r.name || r.domain)} <span class="mono">${more}</span></p><ul class="others">${r.others.map(o => `<li><b>${esc(o.name)}</b> <span class="muted">${esc(o.position || "no title")}</span></li>`).join("")}</ul>`
-          : `<p class="muted">${r.others_searched ? "Hunter found no one else with a usable address here." : "Only the person written to is on the map so far."}</p>`)
-        : `<p>${esc(why(r))}</p>`) +
-      `<p class="error" id="more-error" role="alert" hidden></p><div class="row">` +
-      (c && !r.others_searched ? `<button type="button" class="btn primary" data-more>Find more people here</button>` : "") +
-      `<button type="button" class="btn" data-open>${ready(r) ? "Open the draft" : "Open this company"}</button></div>` +
-      (c && !r.others_searched ? `<p class="hint">Finding more people uses 1 Hunter search.</p>` : "");
   }
 
   function renderList() {
@@ -295,10 +296,9 @@
     place();
   }
 
-  async function findPeople(btn) { // one more Hunter search, on the operator's click: everyone Hunter knows at this company
+  async function findPeople(btn, domain) { // one more Hunter search, on the operator's click: everyone Hunter knows at this company
     if (btn.disabled) return;
     btn.disabled = true; btn.textContent = "Searching";
-    const domain = selected;
     try {
       const res = signInIfNeeded(await fetch("/api/action", { method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ run_id: run.id, domain, action: "people" }) }));
@@ -308,9 +308,9 @@
       renderBoard(); renderDetail(true); quota();
     } catch (e) {
       if (e.message === "Signing in") return;
-      const err = $("more-error");
+      const err = btn.parentElement.querySelector("[data-more-error]");
       err.textContent = e.message.startsWith("Failed") ? "The app is not responding. Check that the server is still running." : e.message;
-      err.hidden = false; btn.disabled = false; btn.textContent = "Find more people here";
+      err.hidden = false; btn.disabled = false; btn.textContent = "Find everyone here";
     }
   }
 
@@ -440,6 +440,25 @@
       if (run) renderFlow();
     } catch (e) { /* the figure stays "-" */ }
   }
+
+  async function findNow(btn) { // Hunter Discover picks companies not researched before; this page then researches them
+    const err = $("find-error");
+    if (btn.disabled) return;
+    btn.disabled = true; btn.textContent = "Finding companies"; err.hidden = true;
+    try {
+      const res = signInIfNeeded(await fetch("/api/discover", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" }));
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Finding companies did not work. Try again.");
+      $("empty").hidden = true; openMaps = null; selected = null; seen = {};
+      await load();
+    } catch (e) {
+      if (e.message === "Signing in") return;
+      err.textContent = e.message.startsWith("Failed") ? "The app is not responding. Check that the server is still running." : e.message;
+      err.hidden = false;
+    }
+    btn.disabled = false; btn.textContent = "Find companies now";
+  }
+  document.querySelectorAll("[data-find]").forEach(b => b.addEventListener("click", () => findNow(b)));
 
   narrow.addEventListener("change", place);
   load();

@@ -11,6 +11,7 @@ from pathlib import Path
 
 import auth
 import checks
+import discover
 import feedback
 import runs
 from domains import parse_domains
@@ -23,7 +24,7 @@ MAX_BODY = 20_000
 ALLOWED_HOSTS = {"%s:%d" % (HOST, PORT), "localhost:%d" % PORT}
 ALLOWED_ORIGINS = {"http://" + h for h in ALLOWED_HOSTS}
 ON_VERCEL = bool(os.environ.get("VERCEL"))  # public HTTPS host: rebinding does not apply, the Origin must match the Host
-OPEN_ROUTES = {"/api/login", "/api/logout"}
+OPEN_ROUTES = {"/api/login", "/api/logout", "/api/cron"}  # the timer brings CRON_SECRET instead of the cookie
 
 
 class Handler(SimpleHTTPRequestHandler):
@@ -96,6 +97,10 @@ class Handler(SimpleHTTPRequestHandler):
     def _get(self):
         if not self._trusted() or not self._signed_in():
             return
+        if self.path == "/api/cron":  # Vercel's daily timer: find companies and research them, no one signed in
+            if not discover.cron_allowed(self.headers.get("Authorization")):
+                return self._json(401, {"error": "Not allowed."})
+            return self._json(200, discover.daily())
         if self.path == "/api/quota":  # Hunter only: the Review screen should not log in to Gmail on every load
             return self._json(200, checks.check_hunter())
         if self.path == "/api/feedback":
@@ -142,6 +147,14 @@ class Handler(SimpleHTTPRequestHandler):
             if error:
                 return self._json(error[0], {"error": error[1]})
             return self._json(200, {"run": state})
+        if self.path == "/api/discover":  # the operator's "Find companies now"
+            try:
+                run_id, domains, error = discover.start_found()
+            except RuntimeError as e:
+                return self._json(502, {"error": str(e)})
+            if error:
+                return self._json(409, {"error": error})
+            return self._json(202, {"run_id": run_id, "domains": domains})
         if self.path == "/api/domains" and isinstance(data.get("text"), str):
             return self._json(200, parse_domains(data["text"]))
         if self.path == "/api/run" and isinstance(data.get("text"), str):

@@ -201,7 +201,7 @@ class RunLevelStops(unittest.TestCase):
     def test_hunter_bad_key_stops_hunter_for_the_rest_of_the_run(self):
         calls = []
 
-        def hunter(domain):
+        def hunter(domain, wide=False):
             calls.append(domain)
             raise pipeline.HunterStop("Hunter rejected the key (HTTP 401).")
         self.swap(pipeline, "hunter_people", hunter)

@@ -45,7 +45,7 @@ async function pick(page: Page, name: string) {
 test("empty state when there is no run yet", async ({ page }) => {
   await open(page, { run: null });
   await expect(page.getByRole("heading", { name: "No run yet" })).toBeVisible();
-  await page.getByRole("link", { name: "Go to Run" }).click();
+  await page.getByRole("link", { name: "Paste domains instead" }).click();
   await expect(page.getByRole("heading", { name: "Run", exact: true })).toBeVisible();
 });
 
@@ -304,12 +304,15 @@ test("groups are dropdowns: only the open company's group starts open", async ({
   await expect(item(page, "Kestrel Metrics")).toBeVisible();
 });
 
-test("a person on the reach map opens the company on its people map", async ({ page }) => {
+const chart = (page: Page, domain = "kestrelmetrics.io") => page.locator(`#reach .oc[data-domain="${domain}"]`);
+
+test("a person on a company's org chart opens their notes on the people map below", async ({ page }) => {
   await open(page);
-  await page.locator("#reach .who").filter({ hasText: "Ines Albrecht" }).click();
+  await chart(page).locator("[data-person]").filter({ hasText: "Ines Albrecht" }).click();
   const map = detail(page).locator(".orgmap");
   await expect(map).toHaveAttribute("open", "");
   await expect(map.locator(".org-node.to")).toContainText("Ines Albrecht");
+  await expect(map.locator(".org-node.to details.person")).toHaveAttribute("open", "");
   await expect(map.locator(".org-node").filter({ hasText: "Omar Reyes" }).getByLabel("CC")).toBeVisible();
 });
 
@@ -318,9 +321,9 @@ test("a note on a person is saved, and a ticked CC goes with the send", async ({
   await stubAction(page, (action) => ({ status: 200, body: { record: action === "note"
     ? { ...READY, notes: { "omar@kestrelmetrics.io": "Met at SaaStr" } }
     : { ...READY, status: "Sent to me", review: { status: "Sent to me", sent_at: "2026-11-12T08:00:00+00:00", cc: ["omar@kestrelmetrics.io"], cc_delivered: [] } } } }));
-  await page.locator("#reach .who").filter({ hasText: "Ines Albrecht" }).click();
+  await chart(page).locator("[data-person]").filter({ hasText: "Omar Reyes" }).click();
   const omar = detail(page).locator(".org-node").filter({ hasText: "Omar Reyes" });
-  await omar.locator("summary").click();
+  await expect(omar.getByLabel("Your notes")).toBeFocused();
   await omar.getByLabel("Your notes").fill("Met at SaaStr");
   await omar.getByLabel("Your notes").blur();
   await expect(omar.getByRole("status")).toHaveText("Saved.");
@@ -329,36 +332,68 @@ test("a note on a person is saved, and a ticked CC goes with the send", async ({
   await detail(page).getByRole("button", { name: "Send to my inbox" }).click();
   expect(bodies[1]).toMatchObject({ action: "send", cc: ["omar@kestrelmetrics.io"] });
   await expect(detail(page).locator("#act-note")).toContainText("CC marked: 1; none of them were emailed.");
+  await expect(chart(page).locator(".node.cc")).toContainText("Omar Reyes"); // the chart marks the CC too
 });
 
-test("the reach map is a network: a company node shows who and why beside it, then opens the draft", async ({ page }) => {
-  await open(page);
-  const node = page.locator('#reach g.co[data-domain="kestrelmetrics.io"]');
-  await node.focus();
-  await page.keyboard.press("Enter");
-  await expect(node).toHaveAttribute("aria-pressed", "true");
-  const info = page.locator("#net-info");
-  await expect(info).toContainText("Ines Albrecht");
-  await expect(info).toContainText("Passing customer security reviews");
-  await info.getByRole("button", { name: "Open the draft" }).click();
-  await expect(detail(page).getByLabel("Subject")).toHaveValue("Frankfurt region and security reviews");
-  await expect(page.locator("#reach g.co")).toHaveCount(4); // every company in the run is on the map
+test("one org chart per company: people branch out by team, with To, roles and the missing security seat", async ({ page }) => {
+  const dub = { ...READY, domain: "dub.co", name: "Dub", others_searched: true,
+    contact: { ...READY.contact, name: "Steven Tey", position: "CEO", email: "steven@dub.co", role_tier: 4 },
+    others: [{ name: "Kiran", position: "Software Engineer", email: "kiran@dub.co", role_tier: null, department: "it" },
+      { name: "support@dub.co", position: "", email: "support@dub.co", role_tier: null, department: "support", shared: true }] };
+  await open(page, run([READY, dub, DROPPED]));
+  await expect(page.locator("#reach .oc")).toHaveCount(2); // a map for each company with people; the dropped one is not mapped
+  await expect(page.locator("#reach")).toContainText("1 company has no map");
+  const kestrel = chart(page);
+  await expect(kestrel.locator(".oc-head")).toHaveAttribute("aria-expanded", "true");
+  await expect(kestrel.locator(".node.team")).toHaveText(["Security & compliance1", "Engineering1"]);
+  await expect(kestrel.locator(".node.to")).toContainText("To · tier 1");
+  await expect(kestrel.locator("[data-person]").filter({ hasText: "Omar Reyes" })).toContainText("Influencer");
+  const d = chart(page, "dub.co");
+  await expect(d.locator(".oc-tree")).toHaveCount(0); // closed until clicked
+  await d.locator(".oc-head").click();
+  await expect(d.locator(".oc-head")).toHaveAttribute("aria-expanded", "true");
+  await expect(d.locator(".oc-head")).toBeFocused();
+  await expect(d.locator(".node.team")).toHaveText(["Leadership1", "Security & compliance0", "Engineering1", "Shared inboxes1"]);
+  await expect(d.locator(".node.gap")).toContainText("Hunter lists nobody in security, compliance or risk");
+  await expect(d.locator(".node.to")).toContainText("Steven Tey");
+  await expect(d.locator(".node.shared")).toContainText("support@");
+  await expect(d.getByRole("button", { name: "Find everyone here" })).toHaveCount(0); // already searched wide
+  await d.getByRole("button", { name: "Open the draft" }).click();
+  await expect(page.locator('.item[aria-pressed="true"]')).toContainText("Dub");
+  await expect(detail(page).locator(".org-node.to")).toContainText("Steven Tey");
 });
 
-test("Find more people fills the open company on the map, once, and says what it costs", async ({ page }) => {
-  await open(page, run([{ ...READY, others: undefined }, DROPPED]));
-  const more = [1, 2, 3, 4].map((i) => ({ name: `Person ${i}`, position: "Engineer", email: `p${i}@kestrelmetrics.io`, role_tier: null }));
+test("Find everyone here fills a senior-only company's chart, once, and says what it costs", async ({ page }) => {
+  await open(page, run([{ ...READY, others: [] }, DROPPED]));
+  const more = [1, 2, 3, 4].map((i) => ({ name: `Person ${i}`, position: "Engineer", email: `p${i}@kestrelmetrics.io`, role_tier: null, department: "it" }));
   const calls = await stubAction(page, () => ({ status: 200, body: { record: { ...READY, others: more, others_searched: true } } }), 300);
-  const info = page.locator("#net-info");
-  await expect(info.getByText("Finding more people uses 1 Hunter search.")).toBeVisible();
-  await expect(page.locator("#reach g.co.hit .pnode")).toHaveCount(1);
-  const find = info.getByRole("button", { name: "Find more people here" });
-  await find.dblclick();
-  await expect(page.locator("#reach g.co.hit .pnode")).toHaveCount(5);
-  await expect(page.locator("#reach g.co.hit .pname")).toHaveText(["Ines Albrecht", "Person 1", "Person 2", "Person 3", "Person 4"]);
-  await expect(info.locator(".others li")).toHaveCount(4);
-  await expect(info.getByRole("button", { name: "Find more people here" })).toHaveCount(0);
+  await expect(chart(page).getByText("Uses 1 Hunter search.")).toBeVisible();
+  await expect(chart(page).locator("[data-person]")).toHaveCount(1);
+  await chart(page).getByRole("button", { name: "Find everyone here" }).dblclick();
+  await expect(chart(page).locator("[data-person]")).toHaveCount(5);
+  await expect(chart(page).getByRole("button", { name: "Find everyone here" })).toHaveCount(0);
   expect(calls).toEqual(["people"]);
+});
+
+test("Find companies now asks Hunter Discover, then shows the companies it found", async ({ page }) => {
+  const found = run([{ domain: "pricefx.com", status: "Researching", pending: true }], { source: "found", finished_at: null });
+  const doneRun = run([DROPPED], { source: "found" });
+  await open(page, [{ run: null }, found, doneRun]);
+  let asked = 0;
+  await page.route("**/api/discover", (r) => { asked++; return r.fulfill({ status: 202, contentType: "application/json", body: JSON.stringify({ run_id: "20261112-130000", domains: ["pricefx.com"] }) }); });
+  await page.route("**/api/step", (r) => r.fulfill({ contentType: "application/json", body: JSON.stringify(doneRun) }));
+  await page.locator(".title-row").getByRole("button", { name: "Find companies now" }).click();
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("1 company found for you");
+  await expect(page.locator("#flow .stage .label").first()).toHaveText("Found");
+  expect(asked).toBe(1);
+});
+
+test("Find companies now explains a refusal in words", async ({ page }) => {
+  await open(page, { run: null });
+  await page.route("**/api/discover", (r) => r.fulfill({ status: 409, contentType: "application/json", body: JSON.stringify({ error: "Hunter has no searches left this month, so no companies were looked for." }) }));
+  await page.locator(".title-row").getByRole("button", { name: "Find companies now" }).click();
+  await expect(page.locator("#find-error")).toHaveText("Hunter has no searches left this month, so no companies were looked for.");
+  await expect(page.locator(".title-row").getByRole("button", { name: "Find companies now" })).toBeEnabled();
 });
 
 test("a sent draft can be edited and sent again as a new version", async ({ page }) => {

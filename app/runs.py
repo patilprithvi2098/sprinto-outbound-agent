@@ -31,11 +31,11 @@ def status_of(r):
     return {"qualified": "Qualified", "disqualified": "Disqualified"}.get(r.get("verdict"), "Flagged")
 
 
-def start(domains):
-    """Returns (run_id, None). Research happens in step()."""
+def start(domains, source="pasted"):
+    """Returns (run_id, None). Research happens in step(). `source`: pasted by the operator, or found by discover.py."""
     run_id = new_run_id()
     paused = _mostly_rejected(latest())  # kill rule against a loop that is making drafts worse
-    store.STORE.put("run", run_id, {"id": run_id, "started_at": _now(), "finished_at": None, "domains": domains,
+    store.STORE.put("run", run_id, {"id": run_id, "started_at": _now(), "finished_at": None, "domains": domains, "source": source,
                                     "corrections_paused": paused, "halt": {}, "attempts": {}})
     return run_id, None
 

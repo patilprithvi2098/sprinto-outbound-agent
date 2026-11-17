@@ -247,7 +247,7 @@ def pick_contact(people, require_tier1=False):
     }, len(people)
 
 
-MAX_OTHERS = 8
+MAX_OTHERS = 10  # Hunter returns at most 10 people per search
 
 
 def others_found(people, contact):
@@ -259,7 +259,8 @@ def others_found(people, contact):
             continue
         seen.add(email)
         out.append({"name": " ".join(filter(None, [p.get("first_name"), p.get("last_name")])) or email,
-                    "position": p.get("position") or "", "email": email, "role_tier": role_tier(p.get("position"))[0]})
+                    "position": p.get("position") or "", "email": email, "role_tier": role_tier(p.get("position"))[0],
+                    "department": p.get("department") or "", "shared": p.get("type") == "generic"})  # department places them in a team on the org chart
     return sorted(out, key=lambda o: o["role_tier"] or 9)[:MAX_OTHERS]
 
 
@@ -272,7 +273,8 @@ HUNTER_ATTEMPTS, HUNTER_WAIT = 3, 2.0
 
 def hunter_people(domain, wide=False):
     """One Hunter search per domain, reused for 7 days so a re-run never spends twice.
-    `wide` is the operator's second search for the people map: anyone at the company, not only senior titled people."""
+    `wide`: anyone at the company, for the org chart. Not wide: senior titled people only, for large companies where
+    ten unfiltered results would rarely reach the security owner."""
     slot = domain + ("/hunter-all" if wide else "/hunter")
     cached = store.STORE.get("cache", slot)
     if cached and time.time() - cached["saved"] < CACHE_DAYS * 86400:
@@ -450,15 +452,15 @@ def run_company(domain, run_id, writer=SONNET, send=True, apply_corrections=True
 
     if halt.get("hunter"):  # no more Hunter calls for the rest of this run
         return done("flagged", "Qualified, but no contact was looked up: %s" % halt["hunter"], rule_applied=rule)
+    large = looks_large(fields)  # only a large company needs the senior-only search: anywhere else, everyone fills the map
     try:
-        people, spent = hunter_people(domain)
+        people, spent = hunter_people(domain, wide=not large)
     except HunterStop as e:
         halt["hunter"] = str(e)
         return done("flagged", "Qualified, but no contact was looked up: %s" % e, rule_applied=rule)
     except RuntimeError as e:
         return done("flagged", str(e), rule_applied=rule)
     record["hunter_search_spent"] = spent
-    large = looks_large(fields)
     contact, considered = pick_contact(people, require_tier1=large)
     record["candidates_considered"] = considered
     if not contact:
@@ -466,7 +468,7 @@ def run_company(domain, run_id, writer=SONNET, send=True, apply_corrections=True
             "nobody with a ranked role, confidence %d+ and a deliverable email" % CONFIG["min_confidence"]
         return done("flagged", "No suitable contact: %s." % why, rule_applied=rule)
     record["contact"] = contact
-    record["others"] = others_found(people, contact)
+    record["others"], record["others_searched"] = others_found(people, contact), not large
 
     pack = {"company": fields["company_name"], "what_it_does": fields["what_it_does"],
             "facts": {k: {"value": fields[k], "quote": fields[k + "_quote"],
