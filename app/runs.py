@@ -135,7 +135,7 @@ def act(run_id, domain, action, edits=None):
     """send | rewrote | skip | note on one record. `edits` may carry the operator's subject, body, reason, the people
     he marked as CC, or a note about one person. Returns (record, None) or (None, (http code, message))."""
     edits = edits or {}
-    if not RUN_ID.fullmatch(run_id or "") or action not in ("send", "rewrote", "skip", "note"):
+    if not RUN_ID.fullmatch(run_id or "") or action not in ("send", "rewrote", "skip", "note", "people"):
         return None, (400, "Bad request.")
     meta = store.STORE.get("run", run_id)
     key = "%s/%s" % (run_id, domain)
@@ -148,6 +148,18 @@ def act(run_id, domain, action, edits=None):
         r = store.STORE.get("record", key)
         draft = r.get("draft") or {}
         known = {o["email"] for o in r.get("others") or []}  # a CC or a note can only name someone Hunter found here
+        if action == "people":  # the operator's click: one more Hunter search, for everyone at this company
+            if not r.get("contact"):
+                return None, (409, "This company has no contact to build a map around.")
+            try:
+                first = (store.STORE.get("cache", domain + "/hunter") or {}).get("people") or []
+                wide, _ = pipeline.hunter_people(domain, wide=True)
+            except RuntimeError as e:  # HunterStop included: no key, no searches left, or no answer
+                return None, (502, str(e))
+            r["others"], r["others_searched"] = pipeline.others_found(first + wide, r["contact"]), True
+            store.STORE.put("record", key, r)
+            r["status"] = status_of(r)
+            return r, None
         if action == "note":
             person = edits.get("person")
             if not r.get("contact") or person not in known | {r["contact"]["email"]}:

@@ -252,11 +252,12 @@ MAX_OTHERS = 8
 
 def others_found(people, contact):
     """The other people Hunter returned with a usable address: shown on the company's people map, and markable as CC."""
-    out = []
+    out, seen = [], {contact["email"]}
     for p in people:
         email = p.get("value")
-        if not email or email == contact["email"] or (p.get("verification") or {}).get("status") == "invalid":
+        if not email or email in seen or (p.get("verification") or {}).get("status") == "invalid":
             continue
+        seen.add(email)
         out.append({"name": " ".join(filter(None, [p.get("first_name"), p.get("last_name")])) or email,
                     "position": p.get("position") or "", "email": email, "role_tier": role_tier(p.get("position"))[0]})
     return sorted(out, key=lambda o: o["role_tier"] or 9)[:MAX_OTHERS]
@@ -269,9 +270,11 @@ class HunterStop(RuntimeError):
 HUNTER_ATTEMPTS, HUNTER_WAIT = 3, 2.0
 
 
-def hunter_people(domain):
-    """One Hunter search per domain, reused for 7 days so a re-run never spends twice."""
-    cached = store.STORE.get("cache", domain + "/hunter")
+def hunter_people(domain, wide=False):
+    """One Hunter search per domain, reused for 7 days so a re-run never spends twice.
+    `wide` is the operator's second search for the people map: anyone at the company, not only senior titled people."""
+    slot = domain + ("/hunter-all" if wide else "/hunter")
+    cached = store.STORE.get("cache", slot)
     if cached and time.time() - cached["saved"] < CACHE_DAYS * 86400:
         return cached["people"], False
     quota = checks.check_hunter()
@@ -281,8 +284,10 @@ def hunter_people(domain):
         raise RuntimeError(quota["detail"])
     if quota["searches_left"] <= 0:
         raise HunterStop("Hunter has no searches left this month.")
-    query = urllib.parse.urlencode({"domain": domain, "limit": 10, "required_field": "position",
-                                    "seniority": "senior,executive", "api_key": os.environ["HUNTER_API_KEY"]})
+    asked = {"domain": domain, "limit": 10, "api_key": os.environ["HUNTER_API_KEY"]}
+    if not wide:
+        asked.update(required_field="position", seniority="senior,executive")
+    query = urllib.parse.urlencode(asked)
     for attempt in range(1, HUNTER_ATTEMPTS + 1):
         try:
             # filtered searches can take Hunter well over 10 s
@@ -298,7 +303,7 @@ def hunter_people(domain):
             if attempt == HUNTER_ATTEMPTS:
                 raise RuntimeError("Hunter did not answer on %d tries (%s)." % (HUNTER_ATTEMPTS, type(e).__name__))
             time.sleep(HUNTER_WAIT * attempt)
-    store.STORE.put("cache", domain + "/hunter", {"saved": time.time(), "people": people})
+    store.STORE.put("cache", slot, {"saved": time.time(), "people": people})
     return people, True
 
 

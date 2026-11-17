@@ -259,7 +259,7 @@ textarea.note { min-height: 0; font: 14px/1.5 var(--font); }
 /* ---- Reach map as a network: the run, its companies, their people ---- */
 .netwrap { display: grid; grid-template-columns: minmax(0, 2fr) minmax(220px, 1fr); gap: var(--s4); align-items: start; }
 .net { width: 100%; height: auto; display: block; background: var(--surface-2); border-radius: var(--radius); }
-.net text { font: 13px var(--font); fill: var(--text); } .net .sub { fill: var(--text-muted); font-size: 12px; }
+.net text { font: 15px var(--font); fill: var(--text); } .net .sub { fill: var(--text-muted); font-size: 14px; }
 .net .hub { fill: var(--secondary); } .net .hubt { fill: var(--card); font-weight: 600; font-size: 12px; }
 .net .edge { stroke: var(--bar); stroke-width: 1.5; }
 .cnode { fill: var(--card); stroke: var(--text-muted); stroke-width: 2; }
@@ -293,3 +293,7 @@ textarea.note { min-height: 0; font: 14px/1.5 var(--font); }
 @keyframes draw { to { stroke-dashoffset: 0; } }
 @keyframes pop { from { transform: scale(0); } }
 @keyframes ping { from { opacity: .7; transform: scale(1); } to { opacity: 0; transform: scale(2.2); } }
+
+.net .pname { font-size: 14px; } .net g.co[aria-pressed="true"] .pname.sub { font-weight: 400; }
+.others { list-style: none; padding: 0; display: grid; gap: var(--s1); } .others li { overflow-wrap: anywhere; }
+#net-info .row { margin-top: var(--s2); } #net-info .btn { margin-top: 0; } #net-info .error { font-weight: 400; }

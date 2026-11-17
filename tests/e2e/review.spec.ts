@@ -102,7 +102,7 @@ test("Send to my inbox sends once on a double click and the status changes", asy
   await send.click();
   await expect(send).toBeDisabled();
   await send.click({ force: true });
-  await expect(item(page, "Kestrel Metrics").locator(".chip")).toHaveText("Sent to me");
+  await expect(item(page, "Kestrel Metrics").locator(".chip")).toHaveText("Sent");
   await expect(detail(page).getByText(/Sent to your inbox/)).toBeVisible();
   await expect(detail(page).getByRole("button", { name: "Send to my inbox" })).toBeDisabled();
   expect(calls).toEqual(["send"]);
@@ -343,4 +343,20 @@ test("the reach map is a network: a company node shows who and why beside it, th
   await info.getByRole("button", { name: "Open the draft" }).click();
   await expect(detail(page).getByLabel("Subject")).toHaveValue("Frankfurt region and security reviews");
   await expect(page.locator("#reach g.co")).toHaveCount(4); // every company in the run is on the map
+});
+
+test("Find more people fills the open company on the map, once, and says what it costs", async ({ page }) => {
+  await open(page, run([{ ...READY, others: undefined }, DROPPED]));
+  const more = [1, 2, 3, 4].map((i) => ({ name: `Person ${i}`, position: "Engineer", email: `p${i}@kestrelmetrics.io`, role_tier: null }));
+  const calls = await stubAction(page, () => ({ status: 200, body: { record: { ...READY, others: more, others_searched: true } } }), 300);
+  const info = page.locator("#net-info");
+  await expect(info.getByText("Finding more people uses 1 Hunter search.")).toBeVisible();
+  await expect(page.locator("#reach g.co.hit .pnode")).toHaveCount(1);
+  const find = info.getByRole("button", { name: "Find more people here" });
+  await find.dblclick();
+  await expect(page.locator("#reach g.co.hit .pnode")).toHaveCount(5);
+  await expect(page.locator("#reach g.co.hit .pname")).toHaveText(["Ines Albrecht", "Person 1", "Person 2", "Person 3", "Person 4"]);
+  await expect(info.locator(".others li")).toHaveCount(4);
+  await expect(info.getByRole("button", { name: "Find more people here" })).toHaveCount(0);
+  expect(calls).toEqual(["people"]);
 });

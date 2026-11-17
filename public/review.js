@@ -14,7 +14,8 @@
   let run = null, selected = null, seen = {}, shownDetail = "", bars = [], mapped = new Set();
   let openGroups = {}, mapOpen = false, ccPick = {}; // what the operator opened or ticked survives a redraw
 
-  const chip = s => `<span class="chip ${TONE[s]}"><svg aria-hidden="true"><use href="#i-${ICON[s]}"/></svg>${esc(s)}</span>`;
+  const shown = s => (s === "Sent to me" ? "Sent" : s); // the operator asked for the words "to me" to go; the note under the draft still says where it went
+  const chip = s => `<span class="chip ${TONE[s]}"><svg aria-hidden="true"><use href="#i-${ICON[s]}"/></svg>${esc(shown(s))}</span>`;
   const path = url => { try { return new URL(url).pathname; } catch (e) { return ""; } };
   const firstSource = r => path((r.evidence || [])[0]?.page_url || (r.pages_fetched || [])[0]?.url || "");
   const ready = r => r.verdict === "qualified" && r.draft && r.draft.grader_verdict === "ready";
@@ -62,22 +63,28 @@
     bars = steps.map(x => x[1]);
     const fresh = d => (mapped.has(d) ? "" : " arrive");
     // A network map, not a table: the run in the middle, a line to every company, and from each company to the people found there.
-    const W = 720, H = 480, cx = W / 2, cy = H / 2, R1 = 120, R2 = 185, rad = d => d * Math.PI / 180;
+    const W = 860, H = 640, cx = W / 2, cy = H / 2 + (n === 1 ? 130 : 0), R1 = 150, rad = d => d * Math.PI / 180; // one company: the hub sits low so its cluster is centred
     const pt = (deg, r) => [(cx + r * Math.cos(rad(deg))).toFixed(1), (cy + r * Math.sin(rad(deg))).toFixed(1)];
-    const step = 360 / Math.max(n, 1), fan = Math.min(16, step / 3.5);
+    const step = 360 / Math.max(n, 1);
     const kind = r => (r.pending ? "wait" : reached.includes(r) ? "hit" : r.status === "Disqualified" ? "drop" : "flag");
     const short = t => (t.length > 22 ? t.slice(0, 21) + "…" : t);
     const nodes = recs.map((r, i) => {
       const a = -90 + i * step, [x, y] = pt(a, R1), cos = Math.cos(rad(a)), sin = Math.sin(rad(a));
-      const people = r.contact ? [r.contact, ...(r.others || []).slice(0, 3)] : [];
-      const ppl = people.map((p, j) => { const [px, py] = pt(a + (j - (people.length - 1) / 2) * fan, R2);
-        return `<line class="edge" x1="${x}" y1="${y}" x2="${px}" y2="${py}"/><circle class="pnode${j ? "" : " to"}" cx="${px}" cy="${py}" r="${j ? 5 : 8}"><title>${esc(p.name)}, ${esc(p.position || "no title")}${j ? "" : " (written to)"}</title></circle>`; }).join("");
-      const [lx, ly] = pt(a, (people.length ? R2 : R1) + 18);
-      const label = `<text x="${lx}" y="${ly}" dy="${sin > .3 ? 10 : sin < -.3 ? (r.contact ? -16 : -2) : 4}" text-anchor="${cos > .3 ? "start" : cos < -.3 ? "end" : "middle"}">${esc(short(r.name || r.domain))}` +
-        (r.contact ? ` <tspan class="sub" x="${lx}" dy="15">${esc(short(r.contact.name))}</tspan>` : "") + `</text>`;
+      const open = r.domain === selected && r.contact; // the chosen company opens up: everyone found there, each with a name
+      const people = r.contact ? [r.contact, ...(r.others || []).slice(0, open ? 8 : 3)] : [];
+      const from = (deg, d) => [(+x + d * Math.cos(rad(deg))).toFixed(1), (+y + d * Math.sin(rad(deg))).toFixed(1)]; // around the company, not the hub
+      const side = deg => { const c = Math.cos(rad(deg)), q = Math.sin(rad(deg)); return `dy="${q > .5 ? 11 : q < -.5 ? -3 : 4}" text-anchor="${c > .35 ? "start" : c < -.35 ? "end" : "middle"}"`; };
+      const spread = open ? Math.min(34, 170 / Math.max(people.length - 1, 1)) : 32;
+      const ppl = people.map((p, j) => { const pa = a + (j - (people.length - 1) / 2) * spread, far = open ? (j % 2 ? 126 : 86) : 50; // two rings keep names apart
+        const [px, py] = from(pa, far), [tx, ty] = from(pa, far + 13);
+        return `<line class="edge" x1="${x}" y1="${y}" x2="${px}" y2="${py}"/><circle class="pnode${j ? "" : " to"}" cx="${px}" cy="${py}" r="${j ? 6 : 9}"><title>${esc(p.name)}, ${esc(p.position || "no title")}${j ? "" : " (written to)"}</title></circle>` +
+          (open ? `<text class="pname${j ? " sub" : ""}" x="${tx}" y="${ty}" ${side(pa)}>${esc(short(p.name))}</text>` : ""); }).join("");
+      const la = open ? a + 138 : a, [lx, ly] = open ? from(la, 36) : from(a, (people.length ? 50 : 0) + 22); // an open company is named on its free side
+      const label = `<text x="${lx}" y="${ly}" ${side(la)}>${esc(short(r.name || r.domain))}` +
+        (r.contact && !open ? ` <tspan class="sub" x="${lx}" dy="15">${esc(short(r.contact.name))}</tspan>` : "") + `</text>`;
       return `<g class="co ${kind(r)}${fresh(r.domain)}" data-domain="${esc(r.domain)}" role="button" tabindex="0" aria-pressed="${r.domain === selected}" ` +
-        `aria-label="${esc(short(r.name || r.domain))}${r.contact ? " " + esc(short(r.contact.name)) : ""}, ${esc(r.status)}"><line class="edge" x1="${cx}" y1="${cy}" x2="${x}" y2="${y}"/>${ppl}` +
-        `<circle class="halo" cx="${x}" cy="${y}" r="13"/><circle class="cnode" cx="${x}" cy="${y}" r="${kind(r) === "hit" ? 12 : 8}"/>${label}</g>`;
+        `aria-description="${esc(shown(r.status))}"><title>${esc(r.name || r.domain)}</title><line class="edge" x1="${cx}" y1="${cy}" x2="${x}" y2="${y}"/>${ppl}` +
+        `<circle class="halo" cx="${x}" cy="${y}" r="15"/><circle class="cnode" cx="${x}" cy="${y}" r="${kind(r) === "hit" ? 14 : 10}"/>${label}</g>`;
     }).join("");
     const who = r => `<button type="button" class="who${fresh(r.domain)}" data-domain="${esc(r.domain)}" aria-pressed="${r.domain === selected}">` +
       `<span class="who-name">${esc(r.contact.name)} <span class="mono">${esc(r.contact.position)}</span></span>` +
@@ -95,9 +102,10 @@
     $("reach").querySelectorAll(".who").forEach(b => b.addEventListener("click", () => go(b.dataset.domain))); // a person opens their company on its people map
     $("reach").querySelectorAll("g.co").forEach(g => { // a node only selects: what it is shows beside the map
       g.addEventListener("click", () => select(g.dataset.domain, false));
-      g.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); select(g.dataset.domain, false); } });
+      g.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); select(g.dataset.domain, false);
+        $("reach").querySelector('g.co[aria-pressed="true"]').focus(); } }); // the map was redrawn: keep the keyboard on the node
     });
-    $("net-info").addEventListener("click", e => { if (e.target.closest("[data-open]")) go(selected); });
+    $("net-info").addEventListener("click", e => { if (e.target.closest("[data-open]")) go(selected); if (e.target.closest("[data-more]")) findPeople(e.target.closest("[data-more]")); });
     markReach();
   }
 
@@ -108,9 +116,14 @@
     const c = r.contact, more = (r.others || []).length;
     box.innerHTML = `<h3>${esc(r.name || r.domain)} ${chip(r.status)}</h3><p class="mono muted">${esc(r.domain)}</p>` +
       (c && r.draft && r.draft.body ? `<p><b>${esc(c.name)}</b>, ${esc(c.position)}</p>` + (r.draft.role_measured_on ? `<p>${esc(r.draft.role_measured_on)}</p>` : "") +
-        ((r.fields || {}).trigger ? `<p class="muted">Why now: ${esc(r.fields.trigger)}</p>` : "") + (more ? `<p class="muted">${more} more ${more === 1 ? "person" : "people"} found here.</p>` : "")
+        ((r.fields || {}).trigger ? `<p class="muted">Why now: ${esc(r.fields.trigger)}</p>` : "") +
+        (more ? `<p class="label sub">Also at ${esc(r.name || r.domain)} <span class="mono">${more}</span></p><ul class="others">${r.others.map(o => `<li><b>${esc(o.name)}</b> <span class="muted">${esc(o.position || "no title")}</span></li>`).join("")}</ul>`
+          : `<p class="muted">${r.others_searched ? "Hunter found no one else with a usable address here." : "Only the person written to is on the map so far."}</p>`)
         : `<p>${esc(why(r))}</p>`) +
-      `<button type="button" class="btn" data-open>${ready(r) ? "Open the draft" : "Open this company"}</button>`;
+      `<p class="error" id="more-error" role="alert" hidden></p><div class="row">` +
+      (c && !r.others_searched ? `<button type="button" class="btn primary" data-more>Find more people here</button>` : "") +
+      `<button type="button" class="btn" data-open>${ready(r) ? "Open the draft" : "Open this company"}</button></div>` +
+      (c && !r.others_searched ? `<p class="hint">Finding more people uses 1 Hunter search.</p>` : "");
   }
 
   function renderList() {
@@ -240,6 +253,25 @@
     place();
   }
 
+  async function findPeople(btn) { // one more Hunter search, on the operator's click: everyone Hunter knows at this company
+    if (btn.disabled) return;
+    btn.disabled = true; btn.textContent = "Searching";
+    const domain = selected;
+    try {
+      const res = signInIfNeeded(await fetch("/api/action", { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ run_id: run.id, domain, action: "people" }) }));
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "The search did not work. Try again.");
+      run.records[run.records.findIndex(x => x.domain === domain)] = data.record;
+      renderBoard(); renderDetail(true); quota();
+    } catch (e) {
+      if (e.message === "Signing in") return;
+      const err = $("more-error");
+      err.textContent = e.message.startsWith("Failed") ? "The app is not responding. Check that the server is still running." : e.message;
+      err.hidden = false; btn.disabled = false; btn.textContent = "Find more people here";
+    }
+  }
+
   async function saveNote(r, box) {
     const said = $("detail").querySelector(`[data-saved="${CSS.escape(box.dataset.note)}"]`);
     try {
@@ -256,8 +288,8 @@
 
   function select(domain, user) {
     selected = domain;
+    renderBoard(); // the chosen company opens up on the map
     renderList();
-    markReach();
     renderDetail(true);
     if (user && narrow.matches) $("detail").scrollIntoView({ block: "nearest" });
   }

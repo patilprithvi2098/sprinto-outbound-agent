@@ -293,3 +293,16 @@ class CcAndNotes(unittest.TestCase):
         people = [{"value": "i@k.io", "first_name": "Ines"}, {"value": "omar@k.io", "first_name": "Omar", "position": "CTO"},
                   {"value": "gone@k.io", "verification": {"status": "invalid"}}]
         self.assertEqual([o["email"] for o in pipeline.others_found(people, {"email": "i@k.io"})], ["omar@k.io"])
+
+    def test_find_more_people_adds_them_once_and_reports_a_hunter_failure(self):
+        import pipeline
+        from unittest import mock
+        found = [{"value": "omar@k.io", "first_name": "Omar", "position": "CTO"}, {"value": "omar@k.io"}, {"value": "new@k.io", "first_name": "Nia"}]
+        with mock.patch.object(pipeline, "hunter_people", return_value=(found, True)) as search:
+            r, err = runs.act(self.rid, "kestrelmetrics.io", "people")
+        self.assertIsNone(err)
+        search.assert_called_once_with("kestrelmetrics.io", wide=True)
+        self.assertEqual([o["email"] for o in r["others"]], ["omar@k.io", "new@k.io"])
+        self.assertTrue(r["others_searched"])
+        with mock.patch.object(pipeline, "hunter_people", side_effect=pipeline.HunterStop("Hunter has no searches left this month.")):
+            self.assertEqual(runs.act(self.rid, "kestrelmetrics.io", "people")[1], (502, "Hunter has no searches left this month."))
