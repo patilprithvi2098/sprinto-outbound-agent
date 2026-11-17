@@ -4,6 +4,7 @@ already researched in any run are skipped; the rest start a run like a pasted li
 import hmac
 import json
 import os
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -18,6 +19,7 @@ from pipeline import CONFIG
 CFG = CONFIG["discover"]
 CALLS = 4  # at most this many Discover calls per batch: each returns up to 100 companies
 STEP_BUDGET = 150  # seconds: no new company is started after this, so a step finishes inside Vercel's 300 s
+WORK_BUDGET = 120  # one hop of the server-side chain
 
 
 def _ask(country, headcount):
@@ -86,9 +88,49 @@ def cron_allowed(header):
     return bool(secret) and hmac.compare_digest((header or "").encode(), ("Bearer " + secret).encode())
 
 
-def daily():
-    """The timer's job: finish an unfinished run, or find today's companies; then research until the time budget."""
-    t0 = time.time()
+def research(run_id, budget=STEP_BUDGET):
+    """Research companies of one run until it is done or the time budget is spent. Returns the run state."""
+    t0, state = time.time(), runs.state(run_id)
+    done = lambda st: sum(1 for r in st["records"] if not r.get("pending"))  # spares can be added, so count finished ones
+    while not state.get("finished_at") and time.time() - t0 < budget:
+        before = done(state)
+        state, _ = runs.step(run_id)
+        if done(state) == before:  # every company left is being researched by another request
+            break
+    return state
+
+
+def kick(run_id, host):
+    """Keep a run going on the server with nobody on the page. On Vercel a request ends when it answers, so each
+    work request researches for a while, then sends the next one to itself (signed with CRON_SECRET) and lets go.
+    Locally the server lives on, so a thread does it. Returns False when it cannot (no CRON_SECRET on Vercel)."""
+    local = not os.environ.get("VERCEL")
+    secret = os.environ.get("CRON_SECRET")
+    if not local and (not secret or not host):
+        return False
+    runs.mark_background(run_id)  # before the work starts, so this write never races the work's own writes to the run
+    if local:
+        threading.Thread(target=research, args=(run_id, 3600), daemon=True).start()
+        return True
+    request = urllib.request.Request("https://%s/api/work" % host, data=json.dumps({"run_id": run_id}).encode(),
+                                     headers={"Content-Type": "application/json", "Authorization": "Bearer " + secret})
+    try:
+        urllib.request.urlopen(request, timeout=3)
+    except Exception:  # expected: the next request carries on by itself after we stop waiting for its answer
+        pass
+    return True
+
+
+def work(run_id, host):
+    """One hop of the server-side chain."""
+    state = research(run_id, budget=WORK_BUDGET)
+    if not state.get("finished_at"):
+        kick(run_id, host)
+    return {"ok": True, "finished": bool(state.get("finished_at"))}
+
+
+def daily(host=None):
+    """The timer's job: finish an unfinished run, or find today's companies, then hand the research to the chain."""
     last = runs.latest()
     if last and not last.get("finished_at"):
         run_id, note = last["id"], "continued the unfinished run"
@@ -97,12 +139,8 @@ def daily():
         if error:
             return {"ok": False, "detail": error}
         note = "found %d companies" % len(domains)
-    state = runs.state(run_id)
-    pending = lambda st: sum(1 for r in st["records"] if r.get("pending"))
-    while not state.get("finished_at") and time.time() - t0 < STEP_BUDGET:
-        before = pending(state)
-        state, _ = runs.step(run_id)
-        if pending(state) == before:  # every company left is being researched by another request
-            break
-    left = pending(state)
-    return {"ok": True, "run_id": run_id, "detail": note + (", %d still to research (Review finishes them)" % left if left else ", all researched")}
+    state = research(run_id)
+    if not state.get("finished_at"):
+        kick(run_id, host)
+    left = sum(1 for r in state["records"] if r.get("pending"))
+    return {"ok": True, "run_id": run_id, "detail": note + (", %d still to research" % left if left else ", all researched")}

@@ -24,7 +24,11 @@ MAX_BODY = 20_000
 ALLOWED_HOSTS = {"%s:%d" % (HOST, PORT), "localhost:%d" % PORT}
 ALLOWED_ORIGINS = {"http://" + h for h in ALLOWED_HOSTS}
 ON_VERCEL = bool(os.environ.get("VERCEL"))  # public HTTPS host: rebinding does not apply, the Origin must match the Host
-OPEN_ROUTES = {"/api/login", "/api/logout", "/api/cron"}  # the timer brings CRON_SECRET instead of the cookie
+OPEN_ROUTES = {"/api/login", "/api/logout", "/api/cron", "/api/work"}  # the timer and the research chain bring CRON_SECRET instead of the cookie
+
+
+def store_has_run(run_id):
+    return bool(runs.store.STORE.get("run", run_id))
 
 
 class Handler(SimpleHTTPRequestHandler):
@@ -100,7 +104,7 @@ class Handler(SimpleHTTPRequestHandler):
         if self.path == "/api/cron":  # Vercel's daily timer: find companies and research them, no one signed in
             if not discover.cron_allowed(self.headers.get("Authorization")):
                 return self._json(401, {"error": "Not allowed."})
-            return self._json(200, discover.daily())
+            return self._json(200, discover.daily(self.headers.get("Host")))
         if self.path == "/api/quota":  # Hunter only: the Review screen should not log in to Gmail on every load
             return self._json(200, checks.check_hunter())
         if self.path == "/api/feedback":
@@ -147,6 +151,12 @@ class Handler(SimpleHTTPRequestHandler):
             if error:
                 return self._json(error[0], {"error": error[1]})
             return self._json(200, {"run": state})
+        if self.path == "/api/work":  # one hop of the server-side research chain (discover.kick)
+            if not discover.cron_allowed(self.headers.get("Authorization")):
+                return self._json(401, {"error": "Not allowed."})
+            if not isinstance(data.get("run_id"), str) or not runs.RUN_ID.fullmatch(data["run_id"]) or not store_has_run(data["run_id"]):
+                return self._json(400, {"error": "Bad request."})
+            return self._json(200, discover.work(data["run_id"], self.headers.get("Host")))
         if self.path == "/api/discover":  # the operator's "Find companies now"
             try:
                 run_id, domains, error = discover.start_found()
@@ -154,7 +164,7 @@ class Handler(SimpleHTTPRequestHandler):
                 return self._json(502, {"error": str(e)})
             if error:
                 return self._json(409, {"error": error})
-            return self._json(202, {"run_id": run_id, "domains": domains})
+            return self._json(202, {"run_id": run_id, "domains": domains, "background": discover.kick(run_id, self.headers.get("Host"))})
         if self.path == "/api/domains" and isinstance(data.get("text"), str):
             return self._json(200, parse_domains(data["text"]))
         if self.path == "/api/run" and isinstance(data.get("text"), str):
@@ -164,6 +174,7 @@ class Handler(SimpleHTTPRequestHandler):
             run_id, error = runs.start(parsed["valid"])
             if error:
                 return self._json(409, {"error": error})
+            discover.kick(run_id, self.headers.get("Host"))
             return self._json(202, {"run_id": run_id, "domains": parsed["valid"], "rejected": parsed["rejected"]})
         if self.path == "/api/action" and all(isinstance(data.get(k), str) for k in ("run_id", "domain", "action")):
             edits = {k: data[k] for k in ("subject", "body", "reason", "note", "person") if k in data}

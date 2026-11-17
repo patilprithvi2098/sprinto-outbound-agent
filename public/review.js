@@ -3,15 +3,10 @@
   const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const ICON = { Qualified: "check", "Sent to me": "send", Rewritten: "pencil", Disqualified: "x", Flagged: "flag", Researching: "clock" };
   const TONE = { Qualified: "wait", "Sent to me": "ok", Rewritten: "ok", Disqualified: "bad", Flagged: "warn", Researching: "wait" };
-  // In a run Hunter Discover found, a company that ends without a draft is not the operator's job: a spare replaced it.
-  const auto = () => run && run.source === "found";
-  const GROUPS = [
-    { name: "Needs you", test: r => r.status === "Flagged" && !auto() },
-    { name: "Drafts to review", test: r => ["Qualified", "Sent to me", "Rewritten"].includes(r.status) },
-    { name: "Researching", test: r => r.status === "Researching" },
-    { name: "Dropped with reason", test: r => r.status === "Disqualified" },
-    { name: "Skipped automatically", test: r => r.status === "Flagged" && auto() },
-  ];
+  // The list shows only the companies that got selected (a draft is ready). Research runs on the server; everything
+  // else (flagged, dropped, still being researched) lives in the research summary at the bottom, with a way to dive in.
+  const picked = r => ["Qualified", "Sent to me", "Rewritten"].includes(r.status) && !r.pending;
+  const GROUPS = [{ name: "Selected", test: picked }];
   const narrow = window.matchMedia("(max-width: 820px)");
   const calm = window.matchMedia("(prefers-reduced-motion: no-preference)");
   let run = null, selected = null, seen = {}, shownDetail = "";
@@ -21,6 +16,13 @@
   const chip = s => `<span class="chip ${TONE[s]}"><svg aria-hidden="true"><use href="#i-${ICON[s]}"/></svg>${esc(shown(s))}</span>`;
   const path = url => { try { return new URL(url).pathname; } catch (e) { return ""; } };
   const firstSource = r => path((r.evidence || [])[0]?.page_url || (r.pages_fetched || [])[0]?.url || "");
+  // Job titles shortened the way people say them, so a card stays small (operator's ask: "CTO or CMO or CFO").
+  const TITLES = [[/chief executive officer/gi, "CEO"], [/chief technology officer|chief technical officer/gi, "CTO"], [/chief marketing officer/gi, "CMO"],
+    [/chief financial officer/gi, "CFO"], [/chief operating officer|chief operations officer/gi, "COO"], [/chief revenue officer/gi, "CRO"],
+    [/chief information security officer/gi, "CISO"], [/chief information officer/gi, "CIO"], [/chief product officer/gi, "CPO"],
+    [/chief security officer/gi, "CSO"], [/chief compliance officer/gi, "CCO"], [/chief people officer|chief human resources officer/gi, "CHRO"],
+    [/senior vice president/gi, "SVP"], [/executive vice president/gi, "EVP"], [/vice president/gi, "VP"]];
+  const short = t => TITLES.reduce((x, [re, abbr]) => x.replace(re, abbr), t || "");
   const ready = r => r.verdict === "qualified" && r.draft && r.draft.grader_verdict === "ready";
   const traceLine = c => `${c.from_pack} of ${c.from_pack + c.generic + c.made_up + c.banned} sentences from the pack, ${c.generic} generic, ${c.made_up} made up, ${c.banned} banned`;
 
@@ -31,22 +33,29 @@
   }
 
   function renderHeader() {
-    const recs = run.records, n = recs.length;
-    const found = run.source === "found"; // found by Hunter Discover on its own, not pasted
-    $("title").textContent = found ? `${n} ${n === 1 ? "company" : "companies"} found for you` : `Run of ${n} ${n === 1 ? "domain" : "domains"}`;
-    const done = recs.filter(r => !r.pending).length;
+    const recs = run.records, n = recs.length, found = run.source === "found"; // found by Hunter Discover on its own, not pasted
+    const done = recs.filter(r => !r.pending), sel = recs.filter(picked).length;
+    $("title").textContent = sel ? `${sel} ${sel === 1 ? "company" : "companies"} selected for you` : run.finished_at ? "No company selected in this run" : "Researching companies for you";
     const start = new Date(run.started_at);
-    let when = `${found ? "Found by Hunter Discover and started" : "Started"} ${start.toLocaleString([], { weekday: "short", hour: "2-digit", minute: "2-digit" })}`;
+    let when = `${found ? "Found by Hunter Discover" : "Pasted"} ${start.toLocaleString([], { weekday: "short", hour: "2-digit", minute: "2-digit" })}`;
     if (run.finished_at) {
       const secs = Math.round((new Date(run.finished_at) - start) / 1000);
-      when += `, took ${secs >= 60 ? Math.floor(secs / 60) + " min " : ""}${secs % 60} s`;
-    } else when += `. Researching: ${done} of ${n} done`;
-    if (found && run.target) when += `. Aiming for ${run.target} drafts: a company that falls out is replaced by the next one found (${(run.queue || []).length} spare${(run.queue || []).length === 1 ? "" : "s"} left)`;
-    $("run-meta").textContent = `${when}. Hunter searches used: ${run.hunter_searches_used}.` +
+      when += `; research took ${secs >= 60 ? Math.floor(secs / 60) + " min " : ""}${secs % 60} s`;
+    }
+    $("run-meta").textContent = `${when}. ${done.length} researched, ${sel} selected. Hunter searches used: ${run.hunter_searches_used}.` +
       (run.corrections_paused ? " Your corrections were not applied to this run: more than half of the last run's drafts were skipped." : "");
-    count("c-need", recs.filter(GROUPS[0].test).length);
-    count("c-ready", recs.filter(r => ["Qualified", "Sent to me", "Rewritten"].includes(r.status)).length);
-    count("c-dropped", recs.filter(r => r.status === "Disqualified" || GROUPS[4].test(r)).length);
+    const prog = $("progress");
+    prog.hidden = !!run.finished_at;
+    if (!run.finished_at) {
+      const pct = Math.round(100 * done.length / Math.max(n, 1));
+      prog.innerHTML = `<p><b>Researching on the server</b>: ${done.length} of ${n} companies checked, ${sel} selected so far.` +
+        (found && run.target ? ` Aiming for ${run.target} selected; a company that falls out is replaced by the next one found.` : "") +
+        ` ${run.background ? "You can close this page; it carries on." : "Keep this page open until it finishes."}</p><div class="bar" aria-hidden="true"><span style="width:${pct}%"></span></div>`;
+    }
+    count("c-done", done.length);
+    count("c-ready", sel);
+    count("c-flagged", done.filter(r => r.status === "Flagged").length);
+    count("c-dropped", done.filter(r => r.status === "Disqualified").length);
   }
 
   function count(id, to) { // a changed number counts up to its new value, so the eye is drawn to what moved
@@ -60,14 +69,18 @@
   // Role groups in priority order (config/icp.json role_priority, tier 1 to 4).
   const LANES = ["Security, compliance or risk", "Engineering leadership", "Operations", "CEO or founder"];
   const TEAMS = ["Leadership", "Security & compliance", "Engineering", "Revenue", "Operations", "Other teams", "Shared inboxes"];
-  function teamOf(p) { // Hunter's department places a person; a ranked title wins, so the security owner is never lost under IT
+  function teamOf(p) { // the job title decides first; Hunter's department only when the title says nothing clear
     const d = (p.department || "").toLowerCase(), t = (p.position || "").toLowerCase();
     if (p.shared) return "Shared inboxes";
     if (p.role_tier === 1) return "Security & compliance";
-    if (d === "executive" || p.role_tier === 4 || /\b(ceo|founder|co-founder|president|chief executive)\b/.test(t)) return "Leadership";
-    if (["it", "engineering"].includes(d) || p.role_tier === 2 || /\b(cto|engineer|engineering|developer|devops|architect)\b/.test(t)) return "Engineering";
+    if (p.role_tier === 2 || /\b(cto|engineer|engineering|developer|devops|architect|technology)\b/.test(t)) return "Engineering";
+    if (p.role_tier === 4 || /\b(ceo|founder|co-founder|president|chief|coo|cfo|cro|cmo)\b/.test(t) && !/\bvice president\b/.test(t)) return "Leadership";
+    if (/\b(marketing|sales|revenue|partner|partnerships|demand|growth|account|customer success|brand|content)\b/.test(t)) return "Revenue";
+    if (p.role_tier === 3 || /\b(operations|finance|legal|people|hr|talent|recruit)\b/.test(t)) return "Operations";
+    if (["it", "engineering"].includes(d)) return "Engineering";
     if (["sales", "marketing", "communication"].includes(d)) return "Revenue";
-    if (["operations", "management", "finance", "legal"].includes(d) || p.role_tier === 3) return "Operations";
+    if (["operations", "management", "finance", "legal", "hr"].includes(d)) return "Operations";
+    if (d === "executive") return "Leadership";
     return "Other teams";
   }
   function roleTag(p, cc) { // why this person matters to a compliance sale, in the words a stakeholder map uses
@@ -84,7 +97,7 @@
     const teams = TEAMS.map(t => [t, people.filter(p => teamOf(p) === t)]).filter(([t, ps]) => ps.length || t === "Security & compliance");
     const card = p => { const tag = roleTag(p, cc), cls = p.to ? "to" : cc.has(p.email) ? "cc" : p.shared ? "shared" : "";
       return `<li><button type="button" class="node ${cls}" data-person="${esc(p.email)}"><span class="n">${esc(p.shared ? p.email.split("@")[0] + "@" : p.name)}</span>` +
-        `<span class="t">${esc(p.position || (p.shared ? "Shared inbox" : "No title on Hunter"))}</span>${tag ? `<span class="tag">${esc(tag)}</span>` : ""}</button></li>`; };
+        `<span class="t" title="${esc(p.position || "")}">${esc(short(p.position) || (p.shared ? "Shared inbox" : "No title on Hunter"))}</span>${tag ? `<span class="tag">${esc(tag)}</span>` : ""}</button></li>`; };
     const gap = `<li><div class="node gap"><span class="n">No one found</span><span class="t">Hunter lists nobody in security, compliance or risk here</span><span class="tag">Gap</span></div></li>`;
     return `<div class="oc-tree"><ul><li><div class="node root"><span class="n">${esc(r.name || r.domain)}</span><span class="t">${people.length} ${people.length === 1 ? "person" : "people"} found</span></div><ul>` +
       teams.map(([t, ps]) => `<li><div class="node team">${esc(t)}<span class="mono">${ps.length}</span></div><ul>${ps.length ? ps.map(card).join("") : gap}</ul></li>`).join("") +
@@ -92,10 +105,32 @@
   }
 
   let openMaps = null, grew = null; // which company maps are open (the selected one at first); grew: the map just opened, which animates once
+  // The research summary: how many were researched, selected, flagged and dropped; the dive shows each one and why.
+  function stoppedAt(r) {
+    const opened = !!r.fields || (r.pages_fetched || []).some(pg => pg.ok);
+    if (!opened) return "Reading the site";
+    if (!(r.verdict === "qualified" || r.contact)) return "Qualifying";
+    if (!r.contact) return "Finding the person";
+    return "Writing the draft";
+  }
+  function renderResearch() {
+    const recs = run.records, done = recs.filter(r => !r.pending), n = Math.max(done.length, 1);
+    const parts = [["sel", "Selected", done.filter(picked)], ["flag", "Flagged", done.filter(r => r.status === "Flagged")],
+      ["drop", "Dropped", done.filter(r => r.status === "Disqualified")], ["wait", "Being researched", recs.filter(r => r.pending)]];
+    $("research").innerHTML = `<p class="muted">${done.length} ${done.length === 1 ? "company" : "companies"} researched${run.finished_at ? "" : " so far"}. Only the selected ones are listed above.</p>` +
+      `<div class="split" aria-hidden="true">${parts.filter(p => p[2].length).map(([k, , rs]) => `<span class="${k}" style="flex:${rs.length}"></span>`).join("")}</div>` +
+      `<ul class="split-key">${parts.map(([k, label, rs]) => `<li><i class="${k}"></i>${label} <b class="mono">${rs.length}</b></li>`).join("")}</ul>`;
+    const rows = done.filter(r => !picked(r));
+    $("dive-list").innerHTML = rows.length ? `<h3>Not selected, and why</h3><ul class="dive-rows">${rows.map(r => `<li data-domain="${esc(r.domain)}"><button type="button" class="item" aria-pressed="${r.domain === selected}">` +
+      `<span class="item-top"><span class="item-name">${esc(r.name || r.domain)}</span>${chip(r.status)}</span>` +
+      `<span class="item-why">${r.status === "Flagged" ? "Stopped at: " + esc(stoppedAt(r)) + ". " : ""}${esc(r.reason || "")}</span><span class="item-src mono">${esc(r.domain)}</span></button></li>`).join("")}</ul>` : "";
+    $("dive-list").querySelectorAll(".item").forEach(b => b.addEventListener("click", () => go(b.parentElement.dataset.domain)));
+  }
+
   function renderBoard() {
     const recs = run.records, done = recs.filter(r => !r.pending);
-    renderFlow();
-    const mapped = done.filter(r => r.contact);
+    renderFlow(); renderResearch();
+    const mapped = done.filter(picked);
     if (!openMaps && mapped.length) openMaps = new Set(selected && mapped.some(r => r.domain === selected) ? [selected] : mapped.slice(0, 1).map(r => r.domain));
     const row = r => { const open = openMaps.has(r.domain), n = 1 + (r.others || []).length;
       const line = (r.fields || {}).trigger ? "Why now: " + r.fields.trigger : r.qualify_reason || r.reason || "";
@@ -106,12 +141,10 @@
         (open ? `<div class="oc-body">${orgChart(r)}<div class="oc-foot"><button type="button" class="btn" data-open>${ready(r) ? "Open the draft" : "Open this company"}</button>` +
           (r.others_searched ? "" : `<button type="button" class="btn" data-more>Find everyone here</button><span class="hint">Uses 1 Hunter search. This company was searched for senior people only.</span>`) +
           `<p class="error" data-more-error role="alert" hidden></p></div></div>` : "") + `</section>`; };
-    const none = done.length - mapped.length;
     $("reach").innerHTML = (mapped.length
       ? `<p class="oc-key"><span><i class="to"></i>Emailed (To)</span><span><i class="cc"></i>Marked CC</span><span><i></i>Found, not contacted</span><span><i class="gap"></i>Seat we looked for, not found</span></p>` +
         `<div class="ocs">${mapped.map(row).join("")}</div>`
-      : `<p class="oc-none">No one reached yet in this run.</p>`) +
-      (none ? `<p class="oc-none">${none} ${none === 1 ? "company has" : "companies have"} no map: ${none === 1 ? "it" : "they"} stopped before a person was found. The flow above says where and why.</p>` : "");
+      : `<p class="oc-none">${run.finished_at ? "No company was selected in this run. The research summary below says why." : "Selected companies appear here as research finishes."}</p>`);
     grew = null;
     $("reach").querySelectorAll(".oc").forEach(sec => {
       const d = sec.dataset.domain;
@@ -125,7 +158,7 @@
     });
   }
 
-  function go(d, person) { // open a company below, on its people list; a clicked person opens their notes
+  function go(d, person) { // open a company below (also one from the research dive); a clicked person opens their notes
     mapOpen = true; select(d, true);
     const box = person && [...$("detail").querySelectorAll("details.person")].find(x => x.querySelector(`[data-note="${CSS.escape(person)}"]`));
     if (box) { box.open = true; box.scrollIntoView({ block: "center", behavior: calm.matches ? "smooth" : "auto" }); box.querySelector("textarea").focus({ preventScroll: true }); }
@@ -174,7 +207,7 @@
           (src && !r.pending ? `<span class="item-src mono">${esc(r.domain)}${esc(src)}</span>` : "") + `</button></li>`;
       }).join("") + "</ul></details>";
     }).join("");
-    $("list").innerHTML = html;
+    $("list").innerHTML = html || `<p class="oc-none">${run.finished_at ? "No company was selected." : "No company selected yet."}</p>`;
     run.records.forEach(r => { if (!r.pending) seen[r.domain] = r.status; });
     $("list").querySelectorAll(".item").forEach(b => b.addEventListener("click", () => select(b.parentElement.dataset.domain, true)));
     $("list").querySelectorAll("details.group").forEach(d => d.addEventListener("toggle", () => { openGroups[d.dataset.group] = d.open; }));
@@ -218,7 +251,7 @@
     const picks = locked ? new Set(rev.cc || []) : (ccPick[r.domain] = ccPick[r.domain] || new Set());
     const people = [Object.assign({ to: true }, r.contact), ...(r.others || [])];
     const node = (p, i) => `<li class="org-node${p.to ? " to" : ""}"><details class="person"><summary><span class="org-name">${esc(p.name)}</span>` +
-      `<span class="mono org-title">${esc(p.position || "No title")}</span></summary><p class="mono src">${esc(p.email)}</p>` +
+      `<span class="mono org-title" title="${esc(p.position || "")}">${esc(short(p.position) || "No title")}</span></summary><p class="mono src">${esc(p.email)}</p>` +
       (p.to ? `<p>${esc(p.why_this_person)}</p>${r.draft && r.draft.role_measured_on ? `<p class="muted">Measured on: ${esc(r.draft.role_measured_on)}</p>` : ""}`
             : `<p class="muted">Found by Hunter, not picked. ${p.role_tier ? "Role group: " + esc(LANES[p.role_tier - 1].toLowerCase()) + "." : "No role on the priority list."}</p>`) +
       `<label class="label" for="note-${i}">Your notes</label><textarea id="note-${i}" class="field note" data-note="${esc(p.email)}" maxlength="1000" rows="2" placeholder="Anything worth remembering about this person.">${esc(notes[p.email] || "")}</textarea>` +
@@ -333,8 +366,7 @@
   }
 
   function defaultSelection() {
-    for (const g of GROUPS.slice(0, 3)) { const r = run.records.find(g.test); if (r) return r.domain; }
-    const r = run.records.find(x => !x.pending); if (r) return r.domain;
+    const r = run.records.find(picked); if (r) return r.domain;
     return null;
   }
 
@@ -407,8 +439,10 @@
         const res = signInIfNeeded(await fetch("/api/step", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ run_id: run.id }) }));
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || "step failed");
+        const before = run.records.filter(r => !r.pending).length;
         show(data.run);
         quota();
+        if (run.records.filter(r => !r.pending).length === before && !run.finished_at) await new Promise(r => setTimeout(r, 4000)); // the server is on it
       } catch (e) {
         if (e.message === "Signing in") return;
         $("load-error").textContent = "Research paused: the app did not answer. It will try again in a few seconds.";

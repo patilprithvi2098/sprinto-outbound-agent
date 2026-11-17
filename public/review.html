@@ -36,21 +36,24 @@
   <section id="run" hidden aria-labelledby="title">
     <p class="muted" id="run-meta"></p>
     <dl class="counts">
-      <div><dt class="label">Need you</dt><dd class="mono key" id="c-need">0</dd></div>
-      <div style="--i:1"><dt class="label">Drafts ready</dt><dd class="mono" id="c-ready">0</dd></div>
+      <div><dt class="label">Researched</dt><dd class="mono" id="c-done">0</dd></div>
+      <div style="--i:1"><dt class="label">Selected</dt><dd class="mono key" id="c-ready">0</dd></div>
+      <div style="--i:2"><dt class="label">Flagged</dt><dd class="mono" id="c-flagged">0</dd></div>
       <div style="--i:3"><dt class="label">Dropped</dt><dd class="mono" id="c-dropped">0</dd></div>
       <div style="--i:4"><dt class="label">Hunter searches left</dt><dd class="mono" id="c-hunter">-</dd></div>
       <div style="--i:5"><dt class="label">Average disagreement</dt><dd class="mono" id="c-disagree">-</dd><dd class="hint" id="c-disagree-note"></dd></div>
     </dl>
     <p class="notice" id="loop-off" role="status" hidden></p>
+    <div class="progress" id="progress" role="status" hidden></div>
     <div class="board">
-      <section class="panel" style="--i:6" aria-labelledby="flow-h"><h2 id="flow-h">How the companies flowed</h2><div id="flow"></div></section>
-      <section class="panel" style="--i:7" aria-labelledby="reach-h"><h2 id="reach-h">Who we reached, and why</h2><div id="reach"></div></section>
+      <section class="panel" style="--i:6" aria-labelledby="reach-h"><h2 id="reach-h">Selected companies: who we reached, and why</h2><div id="reach"></div></section>
     </div>
     <div class="desk">
-      <div class="list" id="list" role="region" aria-label="Companies in this run" tabindex="0"></div>
+      <div class="list" id="list" role="region" aria-label="Selected companies" tabindex="0"></div>
       <section class="detail" id="detail" aria-label="Selected company"></section>
     </div>
+    <section class="panel research" id="research-panel" aria-labelledby="research-h"><h2 id="research-h">Research summary</h2><div id="research"></div>
+      <details class="dive" id="dive"><summary>Dive into the research</summary><div id="flow"></div><div id="dive-list"></div></details></section>
   </section>
 </main>
 <script src="auth.js"></script>

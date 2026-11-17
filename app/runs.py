@@ -41,6 +41,14 @@ def start(domains, source="pasted", queue=(), target=0):
     return run_id, None
 
 
+def mark_background(run_id):
+    """The server is researching this run on its own (discover.kick), so the page can be closed."""
+    meta = store.STORE.get("run", run_id)
+    if meta and not meta.get("background"):  # once is enough: every later hop would only add another write
+        meta["background"] = True
+        store.STORE.put("run", run_id, meta)
+
+
 def step(run_id):
     """Research the next unfinished company in the run, then return the run state. Safe with two tabs open."""
     if not RUN_ID.fullmatch(run_id or ""):

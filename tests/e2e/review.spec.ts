@@ -35,10 +35,12 @@ function stubAction(page: Page, reply: (action: string) => { status: number; bod
 
 const item = (page: Page, name: string) => page.locator(".item").filter({ hasText: name });
 const detail = (page: Page) => page.locator("#detail");
-// Companies sit in dropdown groups; only the group of the open company starts open.
+// Only selected companies are listed; every other researched company is in the research summary's dive.
 async function pick(page: Page, name: string) {
+  const dive = page.locator("details.dive");
+  if (await page.locator("#dive-list .item").filter({ hasText: name }).count() && (await dive.getAttribute("open")) === null) await dive.locator("summary").click();
   const group = page.locator("details.group").filter({ has: item(page, name) });
-  if ((await group.getAttribute("open")) === null) await group.locator("summary").click();
+  if (await group.count() && (await group.getAttribute("open")) === null) await group.locator("summary").click();
   await item(page, name).click();
 }
 
@@ -49,26 +51,30 @@ test("empty state when there is no run yet", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "Run", exact: true })).toBeVisible();
 });
 
-test("header counts and groups, with flagged companies first", async ({ page }) => {
+test("header counts: researched, selected, flagged, dropped; only selected companies are listed", async ({ page }) => {
   await open(page);
-  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Run of 4 domains");
-  await expect(page.locator("#c-need")).toHaveText("2");
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("1 company selected for you");
+  await expect(page.locator("#c-done")).toHaveText("4");
   await expect(page.locator("#c-ready")).toHaveText("1");
+  await expect(page.locator("#c-flagged")).toHaveText("2");
   await expect(page.locator("#c-dropped")).toHaveText("1");
   await expect(page.locator("#c-hunter")).toHaveText("43 of 50");
-  await expect(page.locator(".group")).toHaveText([/Needs you\s*2/, /Drafts to review\s*1/, /Dropped with reason\s*1/]);
-  await expect(page.getByText("took 6 min 41 s")).toBeVisible();
+  await expect(page.locator(".group")).toHaveText([/Selected\s*1/]);
+  await expect(page.locator("#list .item")).toHaveCount(1);
+  await expect(page.getByText("research took 6 min 41 s", { exact: false })).toBeVisible();
 });
 
 test("every status has a text label, not just a colour", async ({ page }) => {
   await open(page);
-  for (const g of ["Drafts to review", "Dropped with reason"]) await page.locator(`details[data-group="${g}"] > summary`).click();
-  for (const s of ["Flagged", "Qualified", "Disqualified"]) await expect(page.locator(".list .chip", { hasText: s }).first()).toBeVisible();
+  await page.locator("details.dive > summary").click();
+  await expect(page.locator(".list .chip", { hasText: "Qualified" }).first()).toBeVisible();
+  for (const s of ["Flagged", "Disqualified"]) await expect(page.locator("#dive-list .chip", { hasText: s }).first()).toBeVisible();
 });
 
 test("a flagged company shows No draft, its reason as text, and Open for manual review", async ({ page }) => {
   await open(page);
-  await expect(item(page, "Tallybook")).toHaveAttribute("aria-pressed", "true"); // first in Needs you is opened
+  await expect(item(page, "Kestrel Metrics")).toHaveAttribute("aria-pressed", "true"); // a selected company opens first
+  await pick(page, "Tallybook"); // from the research dive
   await expect(detail(page).getByRole("heading", { name: "No draft" })).toBeVisible();
   await expect(detail(page).getByText("<img src=x onerror=alert(1)>", { exact: false })).toBeVisible(); // shown, never run
   await expect(detail(page).getByRole("link", { name: "Open for manual review" })).toHaveAttribute("href", "https://tallybook.co/");
@@ -139,10 +145,10 @@ test("while a run is going, the page researches one company per request until do
     await route.fulfill({ contentType: "application/json", body: JSON.stringify(run([READY, DROPPED])) });
   });
   await open(page, run([READY, pending], { finished_at: null }));
-  await expect(page.getByText(/Researching: 1 of 2 done/)).toBeVisible();
-  await expect(item(page, "fernpay.com").locator(".chip")).toHaveText("Researching");
-  await expect(item(page, "Fernpay").locator(".chip")).toHaveText("Disqualified", { timeout: 6000 });
-  await expect(page.locator('li[data-domain="fernpay.com"]')).toHaveClass(/arrive/);
+  await expect(page.locator("#progress")).toContainText("Researching on the server: 1 of 2 companies checked, 1 selected so far.");
+  await expect(page.locator("#list .item")).toHaveCount(1); // the company being researched is not listed
+  await expect(page.locator("#research .split-key")).toContainText("Dropped 1", { timeout: 6000 });
+  await expect(page.locator("#progress")).toBeHidden();
   expect(steps).toEqual(["20261112-130000"]); // one step, then the run reports finished and the page stops asking
 });
 
@@ -156,7 +162,7 @@ test("if a research step fails, the page says so and tries again", async ({ page
   });
   await open(page, run([READY, pending], { finished_at: null }));
   await expect(page.getByText("Research paused: the app did not answer. It will try again in a few seconds.")).toBeVisible();
-  await expect(item(page, "Fernpay").locator(".chip")).toHaveText("Disqualified", { timeout: 12000 });
+  await expect(page.locator("#research .split-key")).toContainText("Dropped 1", { timeout: 12000 });
   expect(calls).toBe(2);
 });
 
@@ -179,8 +185,6 @@ test("server down shows a plain message", async ({ page }) => {
 
 test("keyboard only: move to a company and open it", async ({ page }) => {
   await open(page);
-  expect(await tabUntil(page, 'details[data-group="Drafts to review"] > summary')).toBe(true);
-  await page.keyboard.press("Enter"); // opens the dropdown group
   expect(await tabUntil(page, 'li[data-domain="kestrelmetrics.io"] .item')).toBe(true);
   await page.keyboard.press("Enter");
   await expect(detail(page).getByLabel("Subject")).toHaveValue("Frankfurt region and security reviews");
@@ -296,12 +300,18 @@ test("a draft written with earlier corrections says so, and a paused loop is exp
 
 // ---------- Second pass: dropdown groups, people map, notes, CC ----------
 
-test("groups are dropdowns: only the open company's group starts open", async ({ page }) => {
+test("flagged and dropped companies stay out of the list until you dive into the research", async ({ page }) => {
   await open(page);
-  await expect(item(page, "Tallybook")).toBeVisible();
-  await expect(item(page, "Kestrel Metrics")).toBeHidden();
-  await page.locator('details[data-group="Drafts to review"] > summary').click();
   await expect(item(page, "Kestrel Metrics")).toBeVisible();
+  await expect(item(page, "Tallybook")).toBeHidden();
+  await expect(page.locator("#research")).toContainText("4 companies researched");
+  await expect(page.locator("#research .split-key")).toHaveText(/Selected 1.*Flagged 2.*Dropped 1.*Being researched 0/);
+  await page.locator("details.dive > summary").click();
+  await expect(page.locator("#dive-list .item")).toHaveCount(3);
+  await expect(item(page, "Tallybook")).toContainText("Stopped at: Qualifying.");
+  await expect(item(page, "orbitly.app")).toContainText("Stopped at: Reading the site.");
+  await item(page, "Fernpay").click();
+  await expect(detail(page).getByRole("heading", { name: "Why it was dropped" })).toBeVisible();
 });
 
 const chart = (page: Page, domain = "kestrelmetrics.io") => page.locator(`#reach .oc[data-domain="${domain}"]`);
@@ -342,7 +352,6 @@ test("one org chart per company: people branch out by team, with To, roles and t
       { name: "support@dub.co", position: "", email: "support@dub.co", role_tier: null, department: "support", shared: true }] };
   await open(page, run([READY, dub, DROPPED]));
   await expect(page.locator("#reach .oc")).toHaveCount(2); // a map for each company with people; the dropped one is not mapped
-  await expect(page.locator("#reach")).toContainText("1 company has no map");
   const kestrel = chart(page);
   await expect(kestrel.locator(".oc-head")).toHaveAttribute("aria-expanded", "true");
   await expect(kestrel.locator(".node.team")).toHaveText(["Security & compliance1", "Engineering1"]);
@@ -377,24 +386,26 @@ test("Find everyone here fills a senior-only company's chart, once, and says wha
 
 test("Find companies now asks Hunter Discover, then shows the companies it found", async ({ page }) => {
   const found = run([{ domain: "pricefx.com", status: "Researching", pending: true }], { source: "found", finished_at: null });
-  const doneRun = run([DROPPED], { source: "found" });
+  const doneRun = run([READY, DROPPED], { source: "found" });
   await open(page, [{ run: null }, found, doneRun]);
   let asked = 0;
   await page.route("**/api/discover", (r) => { asked++; return r.fulfill({ status: 202, contentType: "application/json", body: JSON.stringify({ run_id: "20261112-130000", domains: ["pricefx.com"] }) }); });
   await page.route("**/api/step", (r) => r.fulfill({ contentType: "application/json", body: JSON.stringify(doneRun) }));
   await page.locator(".title-row").getByRole("button", { name: "Find companies now" }).click();
-  await expect(page.getByRole("heading", { level: 1 })).toHaveText("1 company found for you");
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("1 company selected for you");
   await expect(page.locator("#flow .stage .label").first()).toHaveText("Found");
   expect(asked).toBe(1);
 });
 
-test("in a found run, companies without a draft are skipped automatically, not put in Needs you", async ({ page }) => {
-  await open(page, run([BLOCKED, READY, DROPPED], { source: "found", target: 2, queue: ["next.io"] }));
-  await expect(page.locator('details[data-group="Needs you"]')).toHaveCount(0);
-  await expect(page.locator("#c-need")).toHaveText("0");
-  await expect(page.locator('details[data-group="Skipped automatically"] summary')).toContainText("1");
-  await expect(page.locator("#run-meta")).toContainText("Aiming for 2 drafts");
-  await expect(item(page, "Kestrel Metrics")).toHaveAttribute("aria-pressed", "true"); // opens on the draft, not a skipped company
+test("while a found run is researched on the server, the page says it can be closed and what it aims for", async ({ page }) => {
+  const going = run([BLOCKED, { domain: "next.io", status: "Researching", pending: true }], { source: "found", target: 2, background: true, finished_at: null });
+  await page.route("**/api/step", (r) => r.fulfill({ contentType: "application/json", body: JSON.stringify(going) }));
+  await open(page, going);
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Researching companies for you");
+  await expect(page.locator("#progress")).toContainText("Aiming for 2 selected");
+  await expect(page.locator("#progress")).toContainText("You can close this page; it carries on.");
+  await expect(page.locator("#list")).toContainText("No company selected yet.");
+  await expect(page.locator("#reach")).toContainText("Selected companies appear here as research finishes.");
 });
 
 test("Find companies now explains a refusal in words", async ({ page }) => {
@@ -427,6 +438,7 @@ test("a sent draft can be edited and sent again as a new version", async ({ page
 
 test("the flow shows each stage with who stopped where, and no feedback loop box", async ({ page }) => {
   await open(page);
+  await page.locator("details.dive > summary").click(); // the flow is part of the dive into the research
   const flow = page.locator("#flow");
   await expect(flow.locator(".stage .label").filter({ hasNotText: "Stopped" })).toHaveText(["Pasted", "Pages read", "Qualified", "Person found", "Draft ready", "You reviewed"]);
   await expect(flow.locator(".stage .count")).toHaveText(["4", "3", "1", "1", "1", "0"]);

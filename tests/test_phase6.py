@@ -445,3 +445,24 @@ class ContactFallback(unittest.TestCase):
                 pipeline.run_company("x.io", "r")
         self.assertEqual(calls, [True, False])
         self.assertEqual(picked[0]["email"], "c@x.io")  # the senior search's CTO, not the support agent
+
+
+class ServerChain(unittest.TestCase):
+    """Research carries on on the server: each work hop researches, then hands on to the next until the run is done."""
+
+    def test_work_hands_on_until_done_and_needs_the_secret(self):
+        from unittest import mock
+        import discover
+        kicks = []
+        with mock.patch.object(discover, "research", return_value={"finished_at": None, "records": []}), \
+                mock.patch.object(discover, "kick", side_effect=lambda rid, host: kicks.append(rid) or True):
+            self.assertEqual(discover.work("20261117-000000", "app.test"), {"ok": True, "finished": False})
+        with mock.patch.object(discover, "research", return_value={"finished_at": "t", "records": []}), \
+                mock.patch.object(discover, "kick", side_effect=lambda rid, host: kicks.append(rid) or True):
+            discover.work("20261117-000000", "app.test")
+        self.assertEqual(kicks, ["20261117-000000"])  # no hop after the run finished
+        with mock.patch.dict(os.environ, {"VERCEL": "1", "CRON_SECRET": ""}):
+            self.assertFalse(discover.kick("20261117-000000", "app.test"))  # no secret on Vercel: the page does the research
+        with mock.patch.dict(os.environ, {"CRON_SECRET": "s3cret"}):
+            status, _, _ = VercelEntry().call("POST", "/api/work", json.dumps({"run_id": "20261117-000000"}).encode())
+        self.assertTrue(status.startswith("401"))
