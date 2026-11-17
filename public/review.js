@@ -11,8 +11,8 @@
   ];
   const narrow = window.matchMedia("(max-width: 820px)");
   const calm = window.matchMedia("(prefers-reduced-motion: no-preference)");
-  let run = null, selected = null, seen = {}, shownDetail = "", bars = [], mapped = new Set();
-  let openGroups = {}, mapOpen = false, ccPick = {}; // what the operator opened or ticked survives a redraw
+  let run = null, selected = null, seen = {}, shownDetail = "", mapped = new Set(), fb = null; // fb: the feedback loop's figures
+  let openGroups = {}, mapOpen = false, ccPick = {}, reopened = new Set(); // reopened: sent drafts the operator chose to edit again // what the operator opened or ticked survives a redraw
 
   const shown = s => (s === "Sent to me" ? "Sent" : s); // the operator asked for the words "to me" to go; the note under the draft still says where it went
   const chip = s => `<span class="chip ${TONE[s]}"><svg aria-hidden="true"><use href="#i-${ICON[s]}"/></svg>${esc(shown(s))}</span>`;
@@ -57,10 +57,7 @@
   function renderBoard() {
     const recs = run.records, n = recs.length, done = recs.filter(r => !r.pending);
     const reached = done.filter(r => r.contact && r.draft && r.draft.body);
-    const steps = [["Pasted", n], ["Researched", done.length], ["Qualified", done.filter(r => r.verdict === "qualified" || r.contact).length],
-      ["Contact found", done.filter(r => r.contact).length], ["Drafted", reached.length]];
-    $("funnel").innerHTML = steps.map(([label, v], i) => `<div><span>${label}</span><i class="${bars[i] === v ? "" : "grow"}" style="--w:${n ? v / n * 100 : 0}"></i><b class="mono">${v}</b></div>`).join("");
-    bars = steps.map(x => x[1]);
+    renderFlow();
     const fresh = d => (mapped.has(d) ? "" : " arrive");
     // A network map, not a table: the run in the middle, a line to every company, and from each company to the people found there.
     const W = 860, H = 640, cx = W / 2, cy = H / 2 + (n === 1 ? 130 : 0), R1 = 150, rad = d => d * Math.PI / 180; // one company: the hub sits low so its cluster is centred
@@ -98,7 +95,6 @@
       `<div class="netside"><div id="net-info" aria-live="polite"></div>` +
       (ranked.length ? `<p class="label sub">People reached, by role priority <span class="mono">${ranked.length}</span></p>${ranked.map(who).join("")}` : `<p class="none">No one reached yet in this run.</p>`) + `</div></div>`;
     done.forEach(r => mapped.add(r.domain));
-    const go = d => { mapOpen = true; select(d, true); $("detail").scrollIntoView({ block: "nearest", behavior: calm.matches ? "smooth" : "auto" }); };
     $("reach").querySelectorAll(".who").forEach(b => b.addEventListener("click", () => go(b.dataset.domain))); // a person opens their company on its people map
     $("reach").querySelectorAll("g.co").forEach(g => { // a node only selects: what it is shows beside the map
       g.addEventListener("click", () => select(g.dataset.domain, false));
@@ -107,6 +103,44 @@
     });
     $("net-info").addEventListener("click", e => { if (e.target.closest("[data-open]")) go(selected); if (e.target.closest("[data-more]")) findPeople(e.target.closest("[data-more]")); });
     markReach();
+  }
+
+  function go(d) { // open a company below, on its people map
+    mapOpen = true; select(d, true);
+    $("detail").scrollIntoView({ block: "nearest", behavior: calm.matches ? "smooth" : "auto" });
+  }
+
+  // The flow: every stage a company passes, an arrow between stages, who stopped where and why,
+  // and the feedback loop: what you change in a draft goes back into how the next drafts are written.
+  function renderFlow() {
+    const recs = run.records, n = recs.length, done = recs.filter(r => !r.pending);
+    const opened = r => !!r.fields || (r.pages_fetched || []).some(pg => pg.ok);
+    const read = done.filter(opened), qualified = read.filter(r => r.verdict === "qualified" || r.contact);
+    const found = qualified.filter(r => r.contact), drafted = found.filter(ready);
+    const rev = r => r.review || {}, sent = drafted.filter(r => rev(r).sent_at), skipped = drafted.filter(r => rev(r).skipped);
+    const waiting = drafted.length - sent.length - skipped.length;
+    const stages = [
+      ["Pasted", n, done.length < n ? `${n - done.length} still being researched` : "domains in this run", []],
+      ["Pages read", read.length, "each company's own site", done.filter(r => !opened(r))],
+      ["Qualified", qualified.length, "not certified, B2B SaaS, big enough", read.filter(r => !qualified.includes(r))],
+      ["Person found", found.length, "the right role, through Hunter", qualified.filter(r => !r.contact)],
+      ["Draft ready", drafted.length, "every sentence checked against the site", found.filter(r => !ready(r))],
+      ["You reviewed", sent.length + skipped.length, `${sent.length} sent, ${skipped.length} skipped, ${waiting} waiting`, []],
+    ];
+    const cut = t => (t.length > 70 ? t.slice(0, 69) + "…" : t);
+    const stop = r => `<button type="button" class="stop" data-domain="${esc(r.domain)}" title="${esc(r.reason || "")}"><b>${esc(r.name || r.domain)}</b> ${esc(cut(r.reason || ""))}</button>`;
+    const used = drafted.filter(r => ((r.feedback_loop || {}).corrections_used || []).length).length;
+    const edited = drafted.filter(r => rev(r).rewritten || rev(r).skipped).length;
+    const lines = !fb ? ["Reading the loop."] : !fb.ok ? [`Off: ${fb.detail}`] :
+      [`${edited} ${edited === 1 ? "draft" : "drafts"} changed by you here`, `${fb.stored} ${fb.stored === 1 ? "correction" : "corrections"} saved`,
+       `Used in ${used} of ${drafted.length} drafts here`, ...(fb.avg_disagreement === null ? [] : [`You change ${Math.round(fb.avg_disagreement * 100)}% on average`])];
+    $("flow").innerHTML = `<div class="flow">` +
+      `<div class="loop${fb && !fb.ok ? " off" : ""}"><svg viewBox="0 0 100 40" preserveAspectRatio="none" aria-hidden="true"><path d="M87.5 40 V9 Q87.5 3 84.5 3 H65.5 Q62.5 3 62.5 9 V38" vector-effect="non-scaling-stroke"/></svg>` +
+      `<span class="loop-head" aria-hidden="true"></span><p><b>Feedback loop</b>${lines.map(l => `<span>${esc(l)}</span>`).join("")}</p></div>` +
+      stages.map(([label, count, note, stopped], i) => `<div class="stage${i === 4 ? " learns" : ""}" style="--i:${i}"><p class="label">${label}</p><b class="mono count">${count}</b><p class="hint">${esc(note)}</p>` +
+        (stopped.length ? `<div class="stops"><p class="label">Stopped here <span class="mono">${stopped.length}</span></p>${stopped.map(stop).join("")}</div>` : "") + `</div>`).join("") +
+      `</div>`;
+    $("flow").querySelectorAll("[data-domain]").forEach(b => b.addEventListener("click", () => go(b.dataset.domain)));
   }
 
   function markReach() { // the chosen company is ringed on the map and described beside it
@@ -167,21 +201,23 @@
       `<p class="subject"><span class="label">Subject</span> ${esc(d.subject)}</p><div class="body">${esc(d.body)}</div>`;
   }
 
+  const isLocked = r => { const rev = r.review || {}; return !!rev.skipped || (!!rev.sent_at && !reopened.has(r.domain)); };
+
   function editableDraft(r) {
-    const d = r.draft, c = r.contact, rev = r.review || {}, locked = !!(rev.sent_at || rev.skipped);
+    const d = r.draft, c = r.contact, rev = r.review || {}, locked = isLocked(r);
     const subject = rev.edited ? rev.edited.subject : d.subject, body = rev.edited ? rev.edited.body : d.body;
     const ro = locked ? "readonly" : "";
     return `<p class="to"><span class="label">To</span> ${esc(c.name)}, ${esc(c.position)} <span class="mono muted">&lt;${esc(c.email)}&gt;</span></p>` +
       `<label class="label" for="ed-subject">Subject</label><input id="ed-subject" class="field subject-field" type="text" maxlength="200" autocomplete="off" value="${esc(subject)}" ${ro}>` +
       `<label class="label" for="ed-body">Email</label><textarea id="ed-body" class="field body-field" maxlength="5000" rows="12" ${ro}>${esc(body)}</textarea>` +
-      (locked ? "" : `<p class="hint" id="ed-hint">Edit the subject or the email before sending. Your changes teach the next drafts.</p>` +
+      (locked ? "" : `<p class="hint" id="ed-hint">${rev.sent_at ? "Change it, then send the new version to your inbox. The earlier email stays in your inbox." : "Edit the subject or the email before sending."} Your changes teach the next drafts.</p>` +
         `<label class="label" for="ed-reason">Why did you change it? (optional)</label><input id="ed-reason" class="field" type="text" maxlength="1000" autocomplete="off" placeholder="Too long. Ask about ISO 27001, not SOC 2.">`);
   }
 
   // The people map of one company: who the email is addressed to, and the others Hunter found there.
   // Each person opens into what we know about them and a notes box; the others can be marked as CC.
   function peopleMap(r) {
-    const rev = r.review || {}, locked = !!(rev.sent_at || rev.skipped), notes = r.notes || {};
+    const rev = r.review || {}, locked = isLocked(r), notes = r.notes || {};
     const picks = locked ? new Set(rev.cc || []) : (ccPick[r.domain] = ccPick[r.domain] || new Set());
     const people = [Object.assign({ to: true }, r.contact), ...(r.others || [])];
     const node = (p, i) => `<li class="org-node${p.to ? " to" : ""}"><details class="person"><summary><span class="org-name">${esc(p.name)}</span>` +
@@ -214,9 +250,11 @@
       const used = ((r.feedback_loop || {}).corrections_used || []).length;
       const loopLine = used ? `<p>Written with ${used} of your earlier ${used === 1 ? "correction" : "corrections"} in mind.${r.feedback_loop.pattern ? " " + esc(r.feedback_loop.pattern) : ""}</p>` : "";
       return head + peopleMap(r) + `<div class="draft">${editableDraft(r)}` +
-        `<div class="row actions"><button class="btn primary" type="button" data-act="send" ${sent || skipped ? "disabled" : ""}>Send to my inbox</button>` +
-        `<button class="btn" type="button" data-act="rewrote" ${rev.rewritten || skipped ? "disabled" : ""}>I rewrote it</button>` +
-        `<button class="btn" type="button" data-act="skip" ${sent || skipped ? "disabled" : ""}>Skip</button></div>` +
+        `<div class="row actions">` + (sent && !skipped && !reopened.has(r.domain)
+          ? `<button class="btn primary" type="button" data-reopen>Edit and send again</button>`
+          : `<button class="btn primary" type="button" data-act="send" ${skipped ? "disabled" : ""}>${sent ? "Send the new version" : "Send to my inbox"}</button>`) +
+        (sent ? "" : `<button class="btn" type="button" data-act="rewrote" ${rev.rewritten || skipped ? "disabled" : ""}>I rewrote it</button>` +
+          `<button class="btn" type="button" data-act="skip" ${skipped ? "disabled" : ""}>Skip</button>`) + `</div>` +
         `<p class="error" id="act-error" role="alert" hidden></p><p class="muted" id="act-note">${esc(note + (sent ? ccNote : ""))}</p></div>` +
         `<div class="reasons">${company}<h3>Why this person</h3><p>${esc(r.contact.why_this_person)} Hunter confidence <span class="mono">${esc(r.contact.confidence)}</span>, email ${esc(r.contact.verification_status || "unverified")}.</p>` +
         `<h3>Two pains</h3><ol class="pains">${d.pains.map(p => `<li>${esc(p.pain)} <span class="mono src">${esc(p.evidence_field)}</span></li>`).join("")}</ol>` +
@@ -246,6 +284,10 @@
       detail.classList.remove("open"); void detail.offsetWidth; detail.classList.add("open");
       shownDetail = html;
       detail.querySelectorAll("[data-act]").forEach(b => b.addEventListener("click", () => act(r, b.dataset.act, b)));
+      detail.querySelectorAll("[data-reopen]").forEach(b => b.addEventListener("click", () => {
+        reopened.add(r.domain); ccPick[r.domain] = new Set((r.review || {}).cc || []);
+        renderDetail(true); $("ed-body").focus();
+      }));
       detail.querySelectorAll(".orgmap").forEach(d => d.addEventListener("toggle", () => { mapOpen = d.open; }));
       detail.querySelectorAll("[data-cc]").forEach(c => c.addEventListener("change", () => ccPick[r.domain][c.checked ? "add" : "delete"](c.dataset.cc)));
       detail.querySelectorAll("[data-note]").forEach(t => t.addEventListener("change", () => saveNote(r, t)));
@@ -320,6 +362,7 @@
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "That did not work. Try again.");
       run.records[run.records.findIndex(x => x.domain === r.domain)] = data.record;
+      if (action === "send") reopened.delete(r.domain);
       renderHeader(); renderBoard(); renderList(); renderDetail(true); loop();
     } catch (e) {
       err.textContent = e.message.startsWith("Failed") ? "The app is not responding. Check that the server is still running." : e.message;
@@ -331,7 +374,7 @@
   function renderDetailButtons(r) { // re-enable what the record allows after a failed action
     const rev = r.review || {};
     $("detail").querySelectorAll("[data-act]").forEach(b => {
-      b.disabled = (b.dataset.act !== "rewrote" && (rev.sent_at || rev.skipped)) || (b.dataset.act === "rewrote" && (rev.rewritten || rev.skipped));
+      b.disabled = (b.dataset.act !== "rewrote" && isLocked(r)) || (b.dataset.act === "rewrote" && (rev.rewritten || rev.skipped));
     });
   }
 
@@ -393,6 +436,8 @@
       $("c-disagree-note").textContent = f.drafts_counted ? `last ${f.drafts_counted} ${f.drafts_counted === 1 ? "draft" : "drafts"}` : "no drafts acted on yet";
       $("loop-off").textContent = f.ok ? "" : f.detail;
       $("loop-off").hidden = f.ok;
+      fb = f;
+      if (run) renderFlow();
     } catch (e) { /* the figure stays "-" */ }
   }
 

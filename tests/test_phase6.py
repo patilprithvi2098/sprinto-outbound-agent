@@ -306,3 +306,16 @@ class CcAndNotes(unittest.TestCase):
         self.assertTrue(r["others_searched"])
         with mock.patch.object(pipeline, "hunter_people", side_effect=pipeline.HunterStop("Hunter has no searches left this month.")):
             self.assertEqual(runs.act(self.rid, "kestrelmetrics.io", "people")[1], (502, "Hunter has no searches left this month."))
+
+    def test_a_sent_draft_can_be_edited_and_sent_again_but_not_repeated(self):
+        from unittest import mock
+        import feedback
+        with mock.patch.object(feedback, "store", return_value=(1, None)):
+            runs.act(self.rid, "kestrelmetrics.io", "send")
+            self.assertIsNone(runs.act(self.rid, "kestrelmetrics.io", "send")[1])  # a plain repeat changes nothing and sends nothing
+            r, err = runs.act(self.rid, "kestrelmetrics.io", "send", {"subject": "New subject", "body": "Hi Ines,\n\nShorter version.\n"})
+            self.assertIsNone(err)
+            self.assertEqual((r["review"]["versions_sent"], r["review"]["status"]), (2, "Rewritten"))
+            again = runs.act(self.rid, "kestrelmetrics.io", "send", {"subject": "New subject", "body": "Hi Ines,\n\nShorter version.\n"})
+        self.assertEqual(again[1], (409, "Nothing changed since the last send. Edit the email first."))
+        self.assertEqual(len(self.sent), 2)  # the original and the new version, nothing else

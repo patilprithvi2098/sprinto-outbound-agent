@@ -10,7 +10,7 @@ Chosen direction: C (Frost board), agreed 2026-11-17, replacing B (split desk, c
 --info: #2f4a5a; --info-bg: #e2eaee;
 --border: #dbe2e6; --bar: #9fb4bd;
 Roles: 60% surface (cool white page, white cards), 30% secondary (dark slate: text, selected borders, the hover fill on buttons), 10% accent (teal).
-Accent only on: the primary button ("Send to my inbox", "Open for manual review"), the one number that matters (the "need you" count), the last bar of the funnel and the border of the To person on the people map. Never on body text.
+Accent only on: the primary button ("Send to my inbox", "Open for manual review"), the one number that matters (the "need you" count), the feedback loop and the Draft ready stage it feeds, and the border of the To person on the people map. Never on body text.
 Contrast checked: text on surface 12.9:1; text-muted on surface 5.2:1, on card 5.5:1, on surface-2 4.8:1; on-accent on accent 5.5:1; accent on card 5.5:1; status pairs: success 6.8:1, warning 6.6:1, danger 6.6:1, info 7.7:1.
 
 ## Type
@@ -19,7 +19,7 @@ Scale: 12 / 13 / 14 / 15 / 17 / 20 / 24 / 32. Email body 17 px; evidence 14 px; 
 Line length: 62ch maximum for email and evidence text.
 
 ## Layout and shape
-Review is a dashboard, top to bottom: five number cards; a row with the funnel (about 1fr) beside the reach map (about 2.6fr); then the company groups as dropdowns; then the selected company end to end across the page. Single column below 820 px; number cards go 5, then 3, then 2 across. Spacing scale: 4 / 8 / 12 / 16 / 24 / 32. Radius: 8 px everywhere. White cards with a 1 px border; no shadows except the primary button's pulse ring. Density: comfortable.
+Review is a dashboard, top to bottom: five number cards; the flow, full width; the reach map, full width; then the company groups as dropdowns; then the selected company end to end across the page. Single column below 820 px; number cards go 5, then 3, then 2 across. Spacing scale: 4 / 8 / 12 / 16 / 24 / 32. Radius: 8 px everywhere. White cards with a 1 px border; no shadows except the primary button's pulse ring. Density: comfortable.
 Breakpoints: phone < 640, tablet < 1024, desktop.
 Within the detail, the draft is separated by a 2 px slate rule, not another box.
 The email fields run the full width of the detail card; the reasoning under them is set in two columns.
@@ -30,7 +30,7 @@ The email fields run the full width of the detail card; the reasoning under them
 **2. Review (first screen).** Opened when the run finishes, to answer "do I trust this company, this person and this email enough to send?".
 - Header: "Run of N domains", run time, Hunter searches left, and three counts (need you, drafts ready, dropped).
 - Number cards: need you, drafts ready, dropped, Hunter searches left, average disagreement. ("Sent to me" was removed as a card and a funnel bar on 2026-11-17; the status label on a sent draft now reads "Sent", and the note under the draft still says it went to the operator's inbox.)
-- Funnel "Where the domains went": pasted, researched, qualified, contact found, drafted; one bar and one count each.
+- Flow "How the companies flowed, and what you taught it" (replaced the funnel on 2026-11-17): six stages left to right with an arrow between each: Pasted, Pages read, Qualified, Person found, Draft ready, You reviewed. Each stage shows its count and one line on what passing it means; under it, "Stopped here" lists every company that stopped at that stage with its reason, and clicking one opens it below. Above the last two stages a dashed teal loop runs from You reviewed back into Draft ready (the dashes travel along it), with a label: drafts you changed in this run, corrections saved, how many drafts here were written with them, and your average change. Draft ready has a teal outline because it is where the loop feeds in. On a phone the stages stack with downward arrows and the loop becomes a box under them.
 - Company groups (Needs you, Drafts to review, Dropped with reason) are dropdowns. The group of the open company starts open; the others start closed.
 - People map: inside a company, "People map" opens a drawn chart: the company at the top, a line to each person. The person the email is addressed to is marked To; the others Hunter found there can be ticked as CC. Each person opens into their address, why they were or were not picked, and a notes box that saves when you leave it. Clicking a person on the reach map opens their company with this map open.
 - CC: ticked people go with the send. They are named in the email the operator receives; only an address on `CC_ALLOWED` is really emailed.

@@ -104,7 +104,7 @@ test("Send to my inbox sends once on a double click and the status changes", asy
   await send.click({ force: true });
   await expect(item(page, "Kestrel Metrics").locator(".chip")).toHaveText("Sent");
   await expect(detail(page).getByText(/Sent to your inbox/)).toBeVisible();
-  await expect(detail(page).getByRole("button", { name: "Send to my inbox" })).toBeDisabled();
+  await expect(detail(page).getByRole("button", { name: "Edit and send again" })).toBeVisible(); // sending again needs a change first
   expect(calls).toEqual(["send"]);
 });
 
@@ -359,4 +359,34 @@ test("Find more people fills the open company on the map, once, and says what it
   await expect(info.locator(".others li")).toHaveCount(4);
   await expect(info.getByRole("button", { name: "Find more people here" })).toHaveCount(0);
   expect(calls).toEqual(["people"]);
+});
+
+test("a sent draft can be edited and sent again as a new version", async ({ page }) => {
+  const sent = { ...READY, status: "Sent to me", review: { status: "Sent to me", sent_at: "2026-11-12T08:00:00+00:00", disagreement: 0 } };
+  await open(page, run([sent, DROPPED]));
+  const calls = await stubAction(page, () => ({ status: 200, body: { record: { ...READY, status: "Rewritten",
+    review: { status: "Rewritten", rewritten: true, sent_at: "2026-11-12T09:00:00+00:00", versions_sent: 2, changed_parts: ["ask"],
+      edited: { subject: READY.draft.subject, body: "Hi Ines,\n\nShorter.\n" } } } } }));
+  await pick(page, "Kestrel Metrics");
+  const d = detail(page);
+  await expect(d.getByLabel("Email")).toHaveAttribute("readonly", "");
+  await d.getByRole("button", { name: "Edit and send again" }).click();
+  await expect(d.getByLabel("Email")).not.toHaveAttribute("readonly", "");
+  await expect(d.getByLabel("Email")).toBeFocused();
+  await d.getByLabel("Email").fill("Hi Ines,\n\nShorter.");
+  await d.getByRole("button", { name: "Send the new version" }).click();
+  expect(calls).toEqual(["send"]);
+  expect(bodies[0]).toMatchObject({ action: "send", body: "Hi Ines,\n\nShorter." });
+  await expect(d.getByRole("button", { name: "Edit and send again" })).toBeVisible();
+  await expect(d.getByLabel("Email")).toHaveValue("Hi Ines,\n\nShorter.\n");
+});
+
+test("the flow shows each stage with who stopped where, and the feedback loop's figures", async ({ page }) => {
+  await open(page);
+  const flow = page.locator("#flow");
+  await expect(flow.locator(".stage .label").filter({ hasNotText: "Stopped" })).toHaveText(["Pasted", "Pages read", "Qualified", "Person found", "Draft ready", "You reviewed"]);
+  await expect(flow.locator(".stage .count")).toHaveText(["4", "3", "1", "1", "1", "0"]);
+  await expect(flow.locator(".loop")).toContainText("3 corrections saved");
+  await flow.locator(".stop").filter({ hasText: "Fernpay" }).click();
+  await expect(item(page, "Fernpay")).toHaveAttribute("aria-pressed", "true"); // opened below (on a phone the card names it, not a heading)
 });

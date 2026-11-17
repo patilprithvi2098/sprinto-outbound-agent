@@ -177,14 +177,21 @@ def act(run_id, domain, action, edits=None):
         if not _ready(r):
             return None, (409, "This company has no draft ready to act on.")
         review = r.setdefault("review", {"status": "Qualified"})
-        if action == "send" and not review.get("sent_at") and not review.get("skipped"):
+        again = bool(review.get("sent_at"))  # a sent draft the operator edited and sends again: a new version, never a repeat
+        if action == "send" and not review.get("skipped") and (not again or "body" in edits):
             change = None
             if "body" in edits:
                 if not edits["body"].strip() or not edits.get("subject", "").strip():
                     return None, (400, "The email needs a subject and a body.")
                 change = feedback.compare(draft, edits["subject"], edits["body"])
-            if not store.STORE.claim("send:" + key):  # across serverless instances: one email per draft
+            last = review.get("edited") or {}
+            if again and (not change or (last.get("subject"), last.get("body")) == (edits["subject"].strip(), edits["body"].strip() + "\n")):
+                return None, (409, "Nothing changed since the last send. Edit the email first.")
+            version = review.get("versions_sent", 1) + 1 if again else 1
+            claim = "send:" + key + ("" if version == 1 else ":%d" % version)
+            if not store.STORE.claim(claim):  # across serverless instances: one email per version
                 return None, (409, "This draft is already being sent.")
+            previous = {k: review.get(k) for k in ("edited", "cc", "cc_delivered")}
             if change:
                 review["edited"] = {"subject": edits["subject"].strip(), "body": edits["body"].strip() + "\n"}
             subject = review["edited"]["subject"] if change else draft["subject"]
@@ -194,14 +201,14 @@ def act(run_id, domain, action, edits=None):
                 args = (pipeline.subject_line(subject, r.get("name") or domain), pipeline.inbox_email(r))
                 send_to_operator(*args, cc=deliver) if deliver else send_to_operator(*args)
             except Exception as e:
-                store.STORE.release("send:" + key)  # nothing went out: allow a retry
-                for k in ("edited", "cc", "cc_delivered"):
-                    review.pop(k, None)
+                store.STORE.release(claim)  # nothing went out: allow a retry
+                for k, v in previous.items():  # back to what was last sent
+                    review.pop(k, None) if v is None else review.update({k: v})
                 review["send_error"] = "Gmail send failed (%s). Try again." % type(e).__name__
                 store.STORE.put("record", key, r)
                 return None, (502, review["send_error"])
             review.update(status="Rewritten" if change or review.get("rewritten") else "Sent to me", sent_at=_now(),
-                          disagreement=change["disagreement"] if change else 0.0)
+                          disagreement=change["disagreement"] if change else 0.0, versions_sent=version)
             review.pop("send_error", None)
             if change:  # an untouched draft is no signal and stores nothing
                 review.update(rewritten=True, changed_parts=change["changed_parts"])
