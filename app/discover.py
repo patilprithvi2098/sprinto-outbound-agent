@@ -22,7 +22,7 @@ STEP_BUDGET = 150  # seconds: no new company is started after this, so a step fi
 
 def _ask(country, headcount):
     """One Discover call. The free plan has no paging, so variety comes from rotating country and size band."""
-    body = {"keywords": {"include": CFG["keywords"], "match": "all"}, "headcount": [headcount],
+    body = {"industry": {"include": CFG["industry"]}, "keywords": {"include": CFG["keywords"], "match": "all"}, "headcount": [headcount],
             "headquarters_location": {"include": [{"country": country}]}, "limit": 100}
     request = urllib.request.Request("https://api.hunter.io/v2/discover?api_key=" + os.environ["HUNTER_API_KEY"],
                                      data=json.dumps(body).encode(), headers={"Content-Type": "application/json"})
@@ -71,10 +71,12 @@ def start_found():
     size = batch_size()
     if size <= 0:
         return None, [], "Hunter has no searches left this month, so no companies were looked for."
-    domains = find(size)
-    if not domains:
+    # some companies always fall out (blocked site, certified, no contact), so spares wait in a queue and step in
+    found = find(size * CFG["candidates_per_draft"])
+    if not found:
         return None, [], "Hunter Discover found no companies that have not been researched already."
-    run_id, _ = runs.start(domains, source="found")
+    domains = found[:size]
+    run_id, _ = runs.start(domains, source="found", queue=found[size:], target=size)
     return run_id, domains, None
 
 

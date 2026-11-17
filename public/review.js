@@ -3,11 +3,14 @@
   const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const ICON = { Qualified: "check", "Sent to me": "send", Rewritten: "pencil", Disqualified: "x", Flagged: "flag", Researching: "clock" };
   const TONE = { Qualified: "wait", "Sent to me": "ok", Rewritten: "ok", Disqualified: "bad", Flagged: "warn", Researching: "wait" };
+  // In a run Hunter Discover found, a company that ends without a draft is not the operator's job: a spare replaced it.
+  const auto = () => run && run.source === "found";
   const GROUPS = [
-    { name: "Needs you", test: r => r.status === "Flagged" },
+    { name: "Needs you", test: r => r.status === "Flagged" && !auto() },
     { name: "Drafts to review", test: r => ["Qualified", "Sent to me", "Rewritten"].includes(r.status) },
     { name: "Researching", test: r => r.status === "Researching" },
     { name: "Dropped with reason", test: r => r.status === "Disqualified" },
+    { name: "Skipped automatically", test: r => r.status === "Flagged" && auto() },
   ];
   const narrow = window.matchMedia("(max-width: 820px)");
   const calm = window.matchMedia("(prefers-reduced-motion: no-preference)");
@@ -38,11 +41,12 @@
       const secs = Math.round((new Date(run.finished_at) - start) / 1000);
       when += `, took ${secs >= 60 ? Math.floor(secs / 60) + " min " : ""}${secs % 60} s`;
     } else when += `. Researching: ${done} of ${n} done`;
+    if (found && run.target) when += `. Aiming for ${run.target} drafts: a company that falls out is replaced by the next one found (${(run.queue || []).length} spare${(run.queue || []).length === 1 ? "" : "s"} left)`;
     $("run-meta").textContent = `${when}. Hunter searches used: ${run.hunter_searches_used}.` +
       (run.corrections_paused ? " Your corrections were not applied to this run: more than half of the last run's drafts were skipped." : "");
-    count("c-need", recs.filter(r => r.status === "Flagged").length);
+    count("c-need", recs.filter(GROUPS[0].test).length);
     count("c-ready", recs.filter(r => ["Qualified", "Sent to me", "Rewritten"].includes(r.status)).length);
-    count("c-dropped", recs.filter(r => r.status === "Disqualified").length);
+    count("c-dropped", recs.filter(r => r.status === "Disqualified" || GROUPS[4].test(r)).length);
   }
 
   function count(id, to) { // a changed number counts up to its new value, so the eye is drawn to what moved
@@ -329,7 +333,8 @@
   }
 
   function defaultSelection() {
-    for (const g of GROUPS) { const r = run.records.find(g.test); if (r) return r.domain; }
+    for (const g of GROUPS.slice(0, 3)) { const r = run.records.find(g.test); if (r) return r.domain; }
+    const r = run.records.find(x => !x.pending); if (r) return r.domain;
     return null;
   }
 

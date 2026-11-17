@@ -286,9 +286,9 @@ def hunter_people(domain, wide=False):
         raise RuntimeError(quota["detail"])
     if quota["searches_left"] <= 0:
         raise HunterStop("Hunter has no searches left this month.")
-    asked = {"domain": domain, "limit": 10, "api_key": os.environ["HUNTER_API_KEY"]}
-    if not wide:
-        asked.update(required_field="position", seniority="senior,executive")
+    asked = {"domain": domain, "limit": 10, "required_field": "position", "api_key": os.environ["HUNTER_API_KEY"]}
+    if not wide:  # wide still asks for a job title: untitled people can be neither ranked nor placed in a team
+        asked["seniority"] = "senior,executive"
     query = urllib.parse.urlencode(asked)
     for attempt in range(1, HUNTER_ATTEMPTS + 1):
         try:
@@ -460,8 +460,15 @@ def run_company(domain, run_id, writer=SONNET, send=True, apply_corrections=True
         return done("flagged", "Qualified, but no contact was looked up: %s" % e, rule_applied=rule)
     except RuntimeError as e:
         return done("flagged", str(e), rule_applied=rule)
-    record["hunter_search_spent"] = spent
     contact, considered = pick_contact(people, require_tier1=large)
+    if not contact and not large:  # everyone titled had no ranked role: one more search, senior people only
+        try:
+            senior, spent_again = hunter_people(domain, wide=False)
+            people, spent = senior + [p for p in people if p.get("value") not in {q.get("value") for q in senior}], spent or spent_again
+            contact, considered = pick_contact(people)
+        except RuntimeError:  # HunterStop included: keep what the first search found
+            pass
+    record["hunter_search_spent"] = spent
     record["candidates_considered"] = considered
     if not contact:
         why = "nobody in security, compliance or risk (required at a company this size)" if large else \

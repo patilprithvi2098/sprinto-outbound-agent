@@ -31,11 +31,12 @@ def status_of(r):
     return {"qualified": "Qualified", "disqualified": "Disqualified"}.get(r.get("verdict"), "Flagged")
 
 
-def start(domains, source="pasted"):
-    """Returns (run_id, None). Research happens in step(). `source`: pasted by the operator, or found by discover.py."""
+def start(domains, source="pasted", queue=(), target=0):
+    """Returns (run_id, None). Research happens in step(). `source`: pasted by the operator, or found by discover.py,
+    which also passes spare companies (`queue`) that replace ones ending without a draft until `target` drafts are ready."""
     run_id = new_run_id()
     paused = _mostly_rejected(latest())  # kill rule against a loop that is making drafts worse
-    store.STORE.put("run", run_id, {"id": run_id, "started_at": _now(), "finished_at": None, "domains": domains, "source": source,
+    store.STORE.put("run", run_id, {"id": run_id, "started_at": _now(), "finished_at": None, "domains": domains, "source": source, "queue": list(queue), "target": target,
                                     "corrections_paused": paused, "halt": {}, "attempts": {}})
     return run_id, None
 
@@ -65,9 +66,22 @@ def step(run_id):
                 _failed(run_id, domain, "Something went wrong researching this company (%s)." % type(e).__name__)
             fresh = store.STORE.get("run", run_id)  # keep attempts written by other requests, add this halt state
             fresh["halt"] = meta["halt"]
+            _top_up(run_id, fresh)
             store.STORE.put("run", run_id, fresh)
         break
     return state(run_id), None
+
+
+def _top_up(run_id, meta):
+    """A found run keeps going until it has its target of drafts: each company that ended without one is replaced by
+    the next spare, as long as drafts ready plus companies still open fall short. Hunter's halt stops it too."""
+    if not meta.get("queue") or meta.get("halt", {}).get("hunter"):
+        return
+    recs = [store.STORE.get("record", "%s/%s" % (run_id, d)) for d in meta["domains"]]
+    ready, open_ = sum(1 for r in recs if r and _ready(r)), sum(1 for r in recs if not r)
+    while meta["queue"] and ready + open_ < meta.get("target", 0):
+        meta["domains"].append(meta["queue"].pop(0))
+        open_ += 1
 
 
 def _failed(run_id, domain, reason):

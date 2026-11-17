@@ -376,3 +376,72 @@ class FindsCompaniesOnItsOwn(unittest.TestCase):
         out = pipeline.others_found(people, {"email": "c@x.io"})
         self.assertEqual({o["email"]: (o["department"], o["shared"]) for o in out},
                          {"a@x.io": ("it", False), "support@x.io": ("support", True)})
+
+
+class SparesStepIn(unittest.TestCase):
+    """A found run replaces companies that end without a draft, until it has its target of drafts."""
+
+    def setUp(self):
+        import tempfile
+        import store
+        self.tmp, self._real = tempfile.TemporaryDirectory(), store.STORE
+        store.STORE = store.FileStore(self.tmp.name)
+
+    def tearDown(self):
+        import store
+        store.STORE = self._real
+        self.tmp.cleanup()
+
+    def test_failures_are_replaced_until_the_target_and_no_further(self):
+        from unittest import mock
+        import pipeline
+        import store
+        ready = {"verdict": "qualified", "draft": {"grader_verdict": "ready"}}
+
+        def research(domain, run_id, **kw):
+            store.STORE.put("record", "%s/%s" % (run_id, domain), dict(ready, domain=domain) if domain.startswith("ok") else
+                            {"domain": domain, "verdict": "flagged", "reason": "site blocked"})
+        run_id, _ = runs.start(["bad1.io", "ok1.io"], source="found", queue=["bad2.io", "ok2.io", "ok3.io"], target=2)
+        with mock.patch.object(pipeline, "run_company", side_effect=research):
+            state = runs.state(run_id)
+            while not state.get("finished_at"):
+                state, _ = runs.step(run_id)
+        self.assertEqual(state["domains"], ["bad1.io", "ok1.io", "bad2.io", "ok2.io"])  # two drafts: ok3 is never researched
+        self.assertEqual(store.STORE.get("run", run_id)["queue"], ["ok3.io"])
+
+    def test_a_pasted_run_is_never_topped_up(self):
+        from unittest import mock
+        import pipeline
+        import store
+        run_id, _ = runs.start(["bad1.io"])
+        with mock.patch.object(pipeline, "run_company", side_effect=lambda d, rid, **kw: store.STORE.put("record", "%s/%s" % (rid, d), {"domain": d, "verdict": "flagged"})):
+            state, _ = runs.step(run_id)
+        self.assertEqual(state["domains"], ["bad1.io"])
+        self.assertTrue(state["finished_at"])
+
+
+class ContactFallback(unittest.TestCase):
+    """Titled people of any level fill the map; if none has a ranked role, one senior-only search follows."""
+
+    def test_no_ranked_role_among_titled_people_falls_back_to_senior_people(self):
+        import tempfile
+        import pipeline
+        import store
+        from unittest import mock
+        from test_phase5 import FOUND, FIELDS
+        juniors = [{"value": "j@x.io", "first_name": "J", "position": "Support Agent", "confidence": 95, "verification": {"status": "valid"}}]
+        seniors = [{"value": "c@x.io", "first_name": "C", "position": "CTO", "confidence": 95, "verification": {"status": "valid"}}]
+        calls = []
+
+        def hunter(domain, wide=False):
+            calls.append(wide)
+            return (juniors if wide else seniors), True
+        with tempfile.TemporaryDirectory() as tmp, mock.patch.object(store, "STORE", store.FileStore(tmp)), \
+                mock.patch.object(pipeline, "research", lambda d: dict(FOUND, fields=dict(FIELDS))), \
+                mock.patch.object(pipeline, "hunter_people", hunter), \
+                mock.patch.object(pipeline, "others_found", side_effect=lambda people, contact: picked.append(contact) or 1 / 0):
+            picked = []
+            with self.assertRaises(ZeroDivisionError):  # stops right after the contact is chosen
+                pipeline.run_company("x.io", "r")
+        self.assertEqual(calls, [True, False])
+        self.assertEqual(picked[0]["email"], "c@x.io")  # the senior search's CTO, not the support agent

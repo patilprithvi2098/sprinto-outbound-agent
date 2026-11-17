@@ -388,6 +388,15 @@ test("Find companies now asks Hunter Discover, then shows the companies it found
   expect(asked).toBe(1);
 });
 
+test("in a found run, companies without a draft are skipped automatically, not put in Needs you", async ({ page }) => {
+  await open(page, run([BLOCKED, READY, DROPPED], { source: "found", target: 2, queue: ["next.io"] }));
+  await expect(page.locator('details[data-group="Needs you"]')).toHaveCount(0);
+  await expect(page.locator("#c-need")).toHaveText("0");
+  await expect(page.locator('details[data-group="Skipped automatically"] summary')).toContainText("1");
+  await expect(page.locator("#run-meta")).toContainText("Aiming for 2 drafts");
+  await expect(item(page, "Kestrel Metrics")).toHaveAttribute("aria-pressed", "true"); // opens on the draft, not a skipped company
+});
+
 test("Find companies now explains a refusal in words", async ({ page }) => {
   await open(page, { run: null });
   await page.route("**/api/discover", (r) => r.fulfill({ status: 409, contentType: "application/json", body: JSON.stringify({ error: "Hunter has no searches left this month, so no companies were looked for." }) }));

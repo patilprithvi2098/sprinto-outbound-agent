@@ -3,8 +3,9 @@
   "min_confidence": 70,
   "too_small": {"max_team_size": 15, "early_rounds": ["pre-seed"]},
   "large_company": {"rounds": ["series-c-or-later", "public"], "min_team_size": 300},
-  "discover": {"_note": "Hunter Discover filters for finding companies on its own. One country and one size band per call, rotated by day.",
-    "keywords": ["saas", "b2b"], "headcount": ["51-200", "201-500", "501-1000"], "countries": ["US", "GB", "DE", "IN"], "batch": 8},
+  "discover": {"_note": "Hunter Discover filters for finding companies on its own. One country and one size band per call, rotated by day. Software companies of 11-200 people in English-speaking markets: big enough to need SOC 2, small enough that a founder or CTO can be the contact. Tightened 2026-11-17 after the first batch brought hosting firms, 800-person companies and German-only sites.",
+    "industry": ["Software Development"], "keywords": ["saas"], "headcount": ["11-50", "51-200"], "countries": ["US", "GB", "IN", "CA", "AU"],
+    "batch": 8, "candidates_per_draft": 3},
   "max_extra_fetches": 4,
   "max_run_cost_usd": 2.0,
   "evidence_map": [
