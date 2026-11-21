@@ -13,6 +13,10 @@ The operator reviews each draft and its reasoning before anything is sent. Draft
 
 ## How it works
 
+![Components map](design/components-map.png)
+
+The components map is also in [JPG](design/components-map.jpg) and [PDF](design/components-map.pdf). To change it, edit `design/build_map.py`, then run `python3 design/build_map.py && node design/render_map.mjs`.
+
 | Step | Where |
 |---|---|
 | Domain list checks | `app/domains.py` |
